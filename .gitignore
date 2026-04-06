@@ -1,0 +1,26 @@
+# Binaries
+iot-platform
+iot-platform.exe
+iot-server
+iot-server.exe
+
+# Database
+*.db
+
+# Logs
+*.log
+nohup.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/

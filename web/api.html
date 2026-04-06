@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Platform - API Documentation</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
+        .header { background: #1890ff; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 24px; }
+        .header a { color: white; text-decoration: none; }
+        .container { max-width: 1000px; margin: 20px auto; padding: 0 20px; }
+        .card { background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .card-header { padding: 16px 20px; border-bottom: 1px solid #eee; }
+        .card-header h2 { font-size: 18px; color: #333; }
+        .card-body { padding: 20px; }
+        .endpoint { margin-bottom: 24px; }
+        .endpoint:last-child { margin-bottom: 0; }
+        .method { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; color: white; }
+        .method.get { background: #52c41a; }
+        .method.post { background: #1890ff; }
+        .method.put { background: #faad14; }
+        .method.delete { background: #ff4d4f; }
+        .path { font-family: 'Monaco', 'Menlo', monospace; font-size: 14px; color: #333; margin-left: 8px; }
+        .desc { color: #666; margin: 8px 0; font-size: 14px; }
+        .code { background: #f5f5f5; padding: 12px; border-radius: 4px; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; overflow-x: auto; margin-top: 8px; }
+        .params { margin-top: 8px; }
+        .param { display: flex; align-items: center; margin-bottom: 6px; font-size: 13px; }
+        .param-name { font-weight: bold; color: #1890ff; min-width: 120px; }
+        .param-type { color: #52c41a; min-width: 80px; }
+        .param-required { color: #ff4d4f; font-size: 12px; margin-left: 8px; }
+        .back-link { display: inline-block; margin-bottom: 20px; color: #1890ff; text-decoration: none; }
+        .back-link:hover { text-decoration: underline; }
+        .nav { display: flex; gap: 20px; margin-bottom: 20px; flex-wrap: wrap; }
+        .nav a { color: #1890ff; text-decoration: none; padding: 8px 16px; background: white; border-radius: 4px; }
+        .nav a:hover { background: #e6f7ff; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>IoT Platform API Documentation</h1>
+        <a href="dashboard.html">← Back to Dashboard</a>
+    </div>
+    <div class="container">
+        <div class="nav">
+            <a href="#devices">Devices</a>
+            <a href="#device-types">Device Types</a>
+            <a href="#stats">Stats</a>
+            <a href="#telemetry">Telemetry</a>
+            <a href="#commands">Commands</a>
+            <a href="#websocket">WebSocket</a>
+        </div>
+
+        <div class="card" id="devices">
+            <div class="card-header"><h2>Device Management</h2></div>
+            <div class="card-body">
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/devices</span>
+                    <p class="desc">List all registered devices</p>
+                    <div class="code">{
+  "devices": [
+    {
+      "id": "uuid-string",
+      "name": "Device Name",
+      "type_id": 1,
+      "type_name": "sensor",
+      "status": "online/offline",
+      "disabled": false,
+      "secret": "device-secret-key",
+      "properties": "{}",
+      "last_seen": "2024-01-01T00:00:00Z",
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "total": 1
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/devices</span>
+                    <p class="desc">Register a new device</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">name</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">type</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">properties</span><span class="param-type">object</span></div>
+                    </div>
+                    <div class="code">{
+  "name": "Temperature Sensor",
+  "type": "sensor",
+  "properties": {"location": "living room"}
+}</div>
+                    <p class="desc" style="margin-top: 8px; color: #ff4d4f;">返回包含 secret，用于 MQTT 认证</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/devices/:id</span>
+                    <p class="desc">Get device details by ID (includes secret)</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/devices/:id</span>
+                    <p class="desc">Update device information (name, type)</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">name</span><span class="param-type">string</span></div>
+                        <div class="param"><span class="param-name">type</span><span class="param-type">string</span></div>
+                    </div>
+                    <div class="code">{
+  "name": "New Device Name",
+  "type": "actuator"
+}</div>
+                    <p class="desc" style="margin-top: 8px;">如果指定的类型不存在，会自动创建</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/devices/:id/disable</span>
+                    <p class="desc">Disable device (disconnect and prevent reconnection)</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/devices/:id/enable</span>
+                    <p class="desc">Enable device (allow reconnection)</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/devices/:id/properties</span>
+                    <p class="desc">Update device properties</p>
+                    <div class="code">{
+  "temperature": 25.5,
+  "humidity": 60
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span><span class="path">/api/v1/devices/:id</span>
+                    <p class="desc">Delete a device (only offline devices can be deleted)</p>
+                    <p class="desc" style="color: #ff4d4f; margin-top: 4px;">仅允许删除离线设备，在线设备需先禁用</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="device-types">
+            <div class="card-header"><h2>Device Types</h2></div>
+            <div class="card-body">
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/device-types</span>
+                    <p class="desc">List all device types with device count</p>
+                    <div class="code">{
+  "device_types": [
+    {
+      "id": 1,
+      "name": "sensor",
+      "device_count": 5
+    },
+    {
+      "id": 2,
+      "name": "actuator",
+      "device_count": 3
+    }
+  ]
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/device-types</span>
+                    <p class="desc">Create a new device type</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">name</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                    </div>
+                    <div class="code">{
+  "name": "custom-type"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/device-types/:id</span>
+                    <p class="desc">Update device type name</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">name</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                    </div>
+                    <div class="code">{
+  "name": "new-type-name"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span><span class="path">/api/v1/device-types/:id</span>
+                    <p class="desc">Delete a device type</p>
+                    <p class="desc" style="color: #ff4d4f;">无法删除有设备的类型，会返回错误</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="stats">
+            <div class="card-header"><h2>Statistics</h2></div>
+            <div class="card-body">
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/stats</span>
+                    <p class="desc">Get platform statistics</p>
+                    <div class="code">{
+  "total": 10,
+  "online": 7,
+  "offline": 3,
+  "ws_clients": 2
+}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="telemetry">
+            <div class="card-header"><h2>Telemetry Data</h2></div>
+            <div class="card-body">
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/devices/:id/telemetry</span>
+                    <p class="desc">Get device telemetry history</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">limit</span><span class="param-type">int</span></div>
+                    </div>
+                    <div class="code">{
+  "device_id": "uuid-string",
+  "telemetry": [
+    {
+      "id": 1,
+      "device_id": "uuid-string",
+      "data": "{\"temperature\":25.5}",
+      "timestamp": "2024-01-01T00:00:00Z"
+    }
+  ],
+  "count": 1
+}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="commands">
+            <div class="card-header"><h2>Device Commands</h2></div>
+            <div class="card-body">
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/devices/:id/command</span>
+                    <p class="desc">Send a command to device</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">command</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">params</span><span class="param-type">object</span></div>
+                    </div>
+                    <div class="code">{
+  "command": "setTemperature",
+  "params": {"value": 22}
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/devices/:id/commands</span>
+                    <p class="desc">Get device command history</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">limit</span><span class="param-type">int</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="websocket">
+            <div class="card-header"><h2>WebSocket Events</h2></div>
+            <div class="card-body">
+                <p class="desc">Connect: <code>ws://localhost:8080/ws</code></p>
+                <div class="endpoint">
+                    <p class="desc">The server broadcasts events to all connected clients. Event types:</p>
+                    <div class="code">// device_registered - New device was registered
+{"type": "device_registered", "payload": {...}}
+
+// device_unregistered - Device was deleted
+{"type": "device_unregistered", "payload": {"id": "uuid"}}
+
+// device_updated - Device status or properties changed
+{"type": "device_updated", "payload": {...}}
+
+// mqtt_message - Raw MQTT message received
+{"type": "mqtt_message", "payload": {
+  "device_id": "uuid",
+  "topic": "devices/xxx/telemetry",
+  "payload": [...],
+  "timestamp": "..."
+}}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="mqtt">
+            <div class="card-header"><h2>MQTT Topics</h2></div>
+            <div class="card-body">
+                <p class="desc">Broker: <code>tcp://localhost:1883</code></p>
+                
+                <h3 style="margin: 16px 0 8px; color: #ff4d4f;">Authentication Required</h3>
+                <p class="desc">MQTT connections require authentication using device credentials:</p>
+                <div class="code">{
+  "username": "device_id (注册后的设备ID)",
+  "password": "device_secret (设备密钥)"
+}</div>
+                <p class="desc" style="margin-top: 8px;">设备ID和密钥在注册设备时生成，可通过API获取。</p>
+
+                <table style="width:100%; border-collapse: collapse; margin-top: 16px;">
+                    <tr style="background: #f5f5f5;">
+                        <th style="padding: 10px; text-align: left; border: 1px solid #eee;">Topic</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #eee;">Direction</th>
+                        <th style="padding: 10px; text-align: left; border: 1px solid #eee;">Description</th>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #eee;"><code>devices/{id}/telemetry</code></td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Device → Server</td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Sensor data (遥测数据)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #eee;"><code>devices/{id}/heartbeat</code></td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Device → Server</td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Keep-alive ping (心跳，包含属性数据)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #eee;"><code>devices/{id}/status</code></td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Device → Server</td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Status update (状态更新)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #eee;"><code>devices/{id}/command</code></td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Server → Device</td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Command to device (下发命令)</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; border: 1px solid #eee;"><code>devices/{id}/command/resp</code></td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Device → Server</td>
+                        <td style="padding: 10px; border: 1px solid #eee;">Command response (命令响应)</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
