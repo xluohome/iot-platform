@@ -25,6 +25,8 @@ func New(cfg *config.DatabaseConfig) (*Store, error) {
 	}
 
 	if err := db.AutoMigrate(
+		&models.User{},
+		&models.RefreshToken{},
 		&models.Device{},
 		&models.TelemetryData{},
 		&models.DeviceCommand{},
@@ -147,6 +149,12 @@ func (s *Store) GetDeviceCountByType(typeID uint) (int64, error) {
 	return count, err
 }
 
+func (s *Store) GetDeviceCountByUserID(userID uint) (int64, error) {
+	var count int64
+	err := s.db.Model(&models.Device{}).Where("user_id = ?", userID).Count(&count).Error
+	return count, err
+}
+
 func (s *Store) GetDeviceTypeName(typeID uint) (string, error) {
 	var dt models.DeviceType
 	err := s.db.First(&dt, "id = ?", typeID).Error
@@ -178,12 +186,20 @@ func (s *Store) ListDevicesWithTypes() ([]*models.DeviceResponse, error) {
 		typeNames[t.ID] = t.Name
 	}
 
+	userNames := make(map[uint]string)
+	var users []*models.User
+	s.db.Find(&users)
+	for _, u := range users {
+		userNames[u.ID] = u.Username
+	}
+
 	result := make([]*models.DeviceResponse, 0, len(devices))
 	for _, d := range devices {
 		resp := &models.DeviceResponse{
 			ID:         d.ID,
 			Name:       d.Name,
 			TypeID:     d.TypeID,
+			UserID:     d.UserID,
 			Status:     string(d.Status),
 			Secret:     d.Secret,
 			Disabled:   d.Disabled,
@@ -193,6 +209,9 @@ func (s *Store) ListDevicesWithTypes() ([]*models.DeviceResponse, error) {
 		}
 		if name, ok := typeNames[d.TypeID]; ok {
 			resp.TypeName = name
+		}
+		if ownerName, ok := userNames[d.UserID]; ok {
+			resp.OwnerName = ownerName
 		}
 		result = append(result, resp)
 	}
@@ -212,11 +231,20 @@ func (s *Store) GetDeviceWithType(deviceID string) (*models.DeviceResponse, erro
 		}
 	}
 
+	ownerName := ""
+	if d.UserID > 0 {
+		if u, err := s.GetUserByID(d.UserID); err == nil {
+			ownerName = u.Username
+		}
+	}
+
 	return &models.DeviceResponse{
 		ID:         d.ID,
 		Name:       d.Name,
 		TypeID:     d.TypeID,
 		TypeName:   typeName,
+		UserID:     d.UserID,
+		OwnerName:  ownerName,
 		Status:     string(d.Status),
 		Secret:     d.Secret,
 		Disabled:   d.Disabled,
@@ -229,4 +257,170 @@ func (s *Store) GetDeviceWithType(deviceID string) (*models.DeviceResponse, erro
 func (s *Store) CleanupOldTelemetry(days int) error {
 	before := time.Now().AddDate(0, 0, -days)
 	return s.db.Where("timestamp < ?", before).Delete(&models.TelemetryData{}).Error
+}
+
+func (s *Store) CreateUser(user *models.User) error {
+	return s.db.Create(user).Error
+}
+
+func (s *Store) GetUserByUsername(username string) (*models.User, error) {
+	var user models.User
+	err := s.db.First(&user, "username = ?", username).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (s *Store) GetUserByID(id uint) (*models.User, error) {
+	var user models.User
+	err := s.db.First(&user, id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (s *Store) GetAllUsers() ([]*models.User, error) {
+	var users []*models.User
+	err := s.db.Order("id ASC").Find(&users).Error
+	return users, err
+}
+
+func (s *Store) UpdateUser(id uint, updates map[string]interface{}) error {
+	return s.db.Model(&models.User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (s *Store) DeleteUser(id uint) error {
+	return s.db.Delete(&models.User{}, "id = ?", id).Error
+}
+
+func (s *Store) DisableUser(id uint) error {
+	return s.db.Model(&models.User{}).Where("id = ?", id).Update("disabled", true).Error
+}
+
+func (s *Store) EnableUser(id uint) error {
+	return s.db.Model(&models.User{}).Where("id = ?", id).Update("disabled", false).Error
+}
+
+func (s *Store) SaveRefreshToken(token *models.RefreshToken) error {
+	return s.db.Create(token).Error
+}
+
+func (s *Store) GetRefreshToken(token string) (*models.RefreshToken, error) {
+	var rt models.RefreshToken
+	err := s.db.First(&rt, "token = ?", token).Error
+	if err != nil {
+		return nil, err
+	}
+	return &rt, nil
+}
+
+func (s *Store) DeleteRefreshToken(token string) error {
+	return s.db.Delete(&models.RefreshToken{}, "token = ?", token).Error
+}
+
+func (s *Store) DeleteUserRefreshTokens(userID uint) error {
+	return s.db.Delete(&models.RefreshToken{}, "user_id = ?", userID).Error
+}
+
+func (s *Store) CleanupExpiredRefreshTokens() error {
+	return s.db.Where("expires_at < ?", time.Now()).Delete(&models.RefreshToken{}).Error
+}
+
+func (s *Store) GetDeviceByID(id string) (*models.Device, error) {
+	var device models.Device
+	err := s.db.First(&device, "id = ?", id).Error
+	if err != nil {
+		return nil, err
+	}
+	return &device, nil
+}
+
+func (s *Store) ListDevicesByUserID(userID uint) ([]*models.DeviceResponse, error) {
+	var devices []*models.Device
+	if err := s.db.Where("user_id = ?", userID).Find(&devices).Error; err != nil {
+		return nil, err
+	}
+
+	typeNames := make(map[uint]string)
+	var types []*models.DeviceType
+	s.db.Find(&types)
+	for _, t := range types {
+		typeNames[t.ID] = t.Name
+	}
+
+	ownerName := ""
+	if u, err := s.GetUserByID(userID); err == nil {
+		ownerName = u.Username
+	}
+
+	result := make([]*models.DeviceResponse, 0, len(devices))
+	for _, d := range devices {
+		resp := &models.DeviceResponse{
+			ID:         d.ID,
+			Name:       d.Name,
+			TypeID:     d.TypeID,
+			UserID:     d.UserID,
+			OwnerName:  ownerName,
+			Status:     string(d.Status),
+			Secret:     d.Secret,
+			Disabled:   d.Disabled,
+			Properties: d.Properties,
+			LastSeen:   d.LastSeen.Format(time.RFC3339),
+			CreatedAt:  d.CreatedAt.Format(time.RFC3339),
+		}
+		if name, ok := typeNames[d.TypeID]; ok {
+			resp.TypeName = name
+		}
+		result = append(result, resp)
+	}
+	return result, nil
+}
+
+func (s *Store) GetDeviceWithTypeAndUser(deviceID string, userID uint, role string) (*models.DeviceResponse, error) {
+	var d models.Device
+	err := s.db.First(&d, "id = ?", deviceID).Error
+	if err != nil {
+		return nil, err
+	}
+
+	if role != "admin" && d.UserID != userID {
+		return nil, fmt.Errorf("access denied")
+	}
+
+	typeName := ""
+	if d.TypeID > 0 {
+		if dt, err := s.GetDeviceTypeName(d.TypeID); err == nil {
+			typeName = dt
+		}
+	}
+
+	ownerName := ""
+	if d.UserID > 0 {
+		if u, err := s.GetUserByID(d.UserID); err == nil {
+			ownerName = u.Username
+		}
+	}
+
+	return &models.DeviceResponse{
+		ID:         d.ID,
+		Name:       d.Name,
+		TypeID:     d.TypeID,
+		TypeName:   typeName,
+		UserID:     d.UserID,
+		OwnerName:  ownerName,
+		Status:     string(d.Status),
+		Secret:     d.Secret,
+		Disabled:   d.Disabled,
+		Properties: d.Properties,
+		LastSeen:   d.LastSeen.Format(time.RFC3339),
+		CreatedAt:  d.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+func (s *Store) ListDevicesWithUserID() ([]*models.Device, error) {
+	var devices []*models.Device
+	err := s.db.Find(&devices).Error
+	return devices, err
 }

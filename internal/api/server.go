@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"iot-platform/internal/auth"
 	"iot-platform/internal/config"
 	"iot-platform/internal/device"
 	"iot-platform/internal/mqtt"
@@ -17,21 +18,24 @@ import (
 )
 
 type Server struct {
-	router     *gin.Engine
-	config     *config.ServerConfig
-	deviceMgr  *device.Manager
-	mqttServer *mqtt.Server
-	store      *storage.Store
-	wsHub      *websocket.Hub
+	router         *gin.Engine
+	config         *config.Config
+	deviceMgr      *device.Manager
+	mqttServer     *mqtt.Server
+	store          *storage.Store
+	wsHub          *websocket.Hub
+	jwtManager     *auth.JWTManager
+	authHandler    *auth.AuthHandler
+	authMiddleware *auth.AuthMiddleware
 }
 
-func NewServer(cfg *config.ServerConfig, deviceMgr *device.Manager, mqttServer *mqtt.Server, store *storage.Store, wsHub *websocket.Hub) *Server {
+func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.Server, store *storage.Store, wsHub *websocket.Hub) *Server {
 	r := gin.Default()
 
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Refresh-Token")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -39,13 +43,20 @@ func NewServer(cfg *config.ServerConfig, deviceMgr *device.Manager, mqttServer *
 		c.Next()
 	})
 
+	jwtManager := auth.NewJWTManager(cfg.Auth.JWTSecret, cfg.Auth.AccessTokenExpire, cfg.Auth.RefreshTokenExpire)
+	authHandler := auth.NewAuthHandler(jwtManager, store)
+	authMiddleware := auth.NewAuthMiddleware(jwtManager, store)
+
 	s := &Server{
-		router:     r,
-		config:     cfg,
-		deviceMgr:  deviceMgr,
-		mqttServer: mqttServer,
-		store:      store,
-		wsHub:      wsHub,
+		router:         r,
+		config:         cfg,
+		deviceMgr:      deviceMgr,
+		mqttServer:     mqttServer,
+		store:          store,
+		wsHub:          wsHub,
+		jwtManager:     jwtManager,
+		authHandler:    authHandler,
+		authMiddleware: authMiddleware,
 	}
 
 	s.setupRoutes()
@@ -59,7 +70,29 @@ func (s *Server) setupRoutes() {
 		s.wsHub.HandleWS(c.Writer, c.Request)
 	})
 
+	authGroup := s.router.Group("/api/v1/auth")
+	{
+		authGroup.POST("/register", s.authHandler.Register)
+		authGroup.POST("/login", s.authHandler.Login)
+		authGroup.POST("/refresh", s.authHandler.Refresh)
+		authGroup.POST("/logout", s.authMiddleware.Authenticate(), s.authHandler.Logout)
+		authGroup.GET("/me", s.authMiddleware.Authenticate(), s.authHandler.Me)
+	}
+
+	usersGroup := s.router.Group("/api/v1/users")
+	usersGroup.Use(s.authMiddleware.Authenticate(), s.authMiddleware.RequireRole("admin"))
+	{
+		usersGroup.GET("", s.authHandler.GetUsers)
+		usersGroup.POST("", s.authHandler.CreateUser)
+		usersGroup.GET("/:id", s.authHandler.GetUser)
+		usersGroup.PUT("/:id", s.authHandler.UpdateUser)
+		usersGroup.PUT("/:id/disable", s.authHandler.DisableUser)
+		usersGroup.PUT("/:id/enable", s.authHandler.EnableUser)
+		usersGroup.DELETE("/:id", s.authHandler.DeleteUser)
+	}
+
 	api := s.router.Group("/api/v1")
+	api.Use(s.authMiddleware.Authenticate())
 	{
 		devices := api.Group("/devices")
 		{
@@ -79,9 +112,9 @@ func (s *Server) setupRoutes() {
 		deviceTypes := api.Group("/device-types")
 		{
 			deviceTypes.GET("", s.listDeviceTypes)
-			deviceTypes.POST("", s.createDeviceType)
-			deviceTypes.PUT("/:id", s.updateDeviceType)
-			deviceTypes.DELETE("/:id", s.deleteDeviceType)
+			deviceTypes.POST("", s.authMiddleware.RequireRole("admin"), s.createDeviceType)
+			deviceTypes.PUT("/:id", s.authMiddleware.RequireRole("admin"), s.updateDeviceType)
+			deviceTypes.DELETE("/:id", s.authMiddleware.RequireRole("admin"), s.deleteDeviceType)
 		}
 
 		api.GET("/stats", s.getStats)
@@ -93,13 +126,14 @@ func (s *Server) setupRoutes() {
 }
 
 func (s *Server) Start() error {
-	addr := fmt.Sprintf(":%s", s.config.HTTPAddr)
+	addr := fmt.Sprintf(":%s", s.config.Server.HTTPAddr)
 	return s.router.Run(addr)
 }
 
 type RegisterDeviceRequest struct {
 	Name       string                 `json:"name" binding:"required"`
 	Type       string                 `json:"type" binding:"required"`
+	UserID     uint                   `json:"user_id"`
 	Properties map[string]interface{} `json:"properties"`
 }
 
@@ -110,7 +144,17 @@ func (s *Server) registerDevice(c *gin.Context) {
 		return
 	}
 
-	device, err := s.deviceMgr.Register(req.Name, req.Type, req.Properties)
+	currentUserID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	var deviceUserID uint
+	if role.(string) == "admin" && req.UserID > 0 {
+		deviceUserID = req.UserID
+	} else {
+		deviceUserID = currentUserID.(uint)
+	}
+
+	device, err := s.deviceMgr.Register(req.Name, req.Type, req.Properties, deviceUserID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -125,7 +169,18 @@ func (s *Server) registerDevice(c *gin.Context) {
 }
 
 func (s *Server) listDevices(c *gin.Context) {
-	devices, err := s.store.ListDevicesWithTypes()
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	var devices []*models.DeviceResponse
+	var err error
+
+	if role.(string) == "admin" {
+		devices, err = s.store.ListDevicesWithTypes()
+	} else {
+		devices, err = s.store.ListDevicesByUserID(userID.(uint))
+	}
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -139,8 +194,10 @@ func (s *Server) listDevices(c *gin.Context) {
 
 func (s *Server) getDevice(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
 
-	device, err := s.store.GetDeviceWithType(id)
+	device, err := s.store.GetDeviceWithTypeAndUser(id, userID.(uint), role.(string))
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
 		return
@@ -151,10 +208,17 @@ func (s *Server) getDevice(c *gin.Context) {
 
 func (s *Server) deleteDevice(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
 
-	device, err := s.store.GetDeviceWithType(id)
+	device, err := s.store.GetDeviceByID(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
 		return
 	}
 
@@ -177,12 +241,26 @@ func (s *Server) deleteDevice(c *gin.Context) {
 }
 
 type UpdateDeviceRequest struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	UserID uint   `json:"user_id"`
 }
 
 func (s *Server) updateDevice(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
 
 	var req UpdateDeviceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -195,11 +273,31 @@ func (s *Server) updateDevice(c *gin.Context) {
 		return
 	}
 
+	if role.(string) == "admin" && req.UserID > 0 {
+		if err := s.deviceMgr.UpdateDeviceOwner(id, req.UserID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"message": "device updated"})
 }
 
 func (s *Server) updateProperties(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
 
 	var props map[string]interface{}
 	if err := c.ShouldBindJSON(&props); err != nil {
@@ -208,6 +306,8 @@ func (s *Server) updateProperties(c *gin.Context) {
 	}
 
 	var name, deviceType string
+	var newUserID uint
+	var hasUserID bool
 	if n, ok := props["name"].(string); ok {
 		name = n
 		delete(props, "name")
@@ -216,9 +316,21 @@ func (s *Server) updateProperties(c *gin.Context) {
 		deviceType = t
 		delete(props, "type")
 	}
+	if uid, ok := props["user_id"].(float64); ok && role.(string) == "admin" {
+		newUserID = uint(uid)
+		hasUserID = true
+		delete(props, "user_id")
+	}
 
 	if name != "" || deviceType != "" {
 		if err := s.deviceMgr.UpdateDeviceInfo(id, name, deviceType); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	if hasUserID {
+		if err := s.deviceMgr.UpdateDeviceOwner(id, newUserID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -232,15 +344,26 @@ func (s *Server) updateProperties(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "properties updated"})
 }
 
-type SendCommandRequest struct {
-	Command string                 `json:"command" binding:"required"`
-	Params  map[string]interface{} `json:"params"`
-}
-
 func (s *Server) sendCommand(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
 
-	var req SendCommandRequest
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	var req struct {
+		Command string                 `json:"command" binding:"required"`
+		Params  map[string]interface{} `json:"params"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -266,6 +389,20 @@ func (s *Server) sendCommand(c *gin.Context) {
 
 func (s *Server) getTelemetry(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
 	limitStr := c.DefaultQuery("limit", "100")
 	limit, _ := strconv.Atoi(limitStr)
 
@@ -284,6 +421,20 @@ func (s *Server) getTelemetry(c *gin.Context) {
 
 func (s *Server) getCommands(c *gin.Context) {
 	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
 	limitStr := c.DefaultQuery("limit", "50")
 	limit, _ := strconv.Atoi(limitStr)
 
@@ -298,6 +449,66 @@ func (s *Server) getCommands(c *gin.Context) {
 		"commands":  commands,
 		"count":     len(commands),
 	})
+}
+
+func (s *Server) disableDevice(c *gin.Context) {
+	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	if err := s.deviceMgr.DisableDevice(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.mqttServer.DisconnectDevice(id)
+
+	s.wsHub.Broadcast(&websocket.Message{
+		Type:    "device_updated",
+		Payload: map[string]interface{}{"id": id, "disabled": true},
+	})
+
+	c.JSON(http.StatusOK, gin.H{"message": "device disabled"})
+}
+
+func (s *Server) enableDevice(c *gin.Context) {
+	id := c.Param("id")
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	device, err := s.store.GetDeviceByID(id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "device not found"})
+		return
+	}
+
+	if role.(string) != "admin" && device.UserID != userID.(uint) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "access denied"})
+		return
+	}
+
+	if err := s.deviceMgr.EnableDevice(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	s.wsHub.Broadcast(&websocket.Message{
+		Type:    "device_updated",
+		Payload: map[string]interface{}{"id": id, "disabled": false},
+	})
+
+	c.JSON(http.StatusOK, gin.H{"message": "device enabled"})
 }
 
 type DeviceTypeResponse struct {
@@ -401,38 +612,4 @@ func (s *Server) getStats(c *gin.Context) {
 	stats["ws_clients"] = s.wsHub.ClientCount()
 
 	c.JSON(http.StatusOK, stats)
-}
-
-func (s *Server) disableDevice(c *gin.Context) {
-	id := c.Param("id")
-
-	if err := s.deviceMgr.DisableDevice(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	s.mqttServer.DisconnectDevice(id)
-
-	s.wsHub.Broadcast(&websocket.Message{
-		Type:    "device_updated",
-		Payload: map[string]interface{}{"id": id, "disabled": true},
-	})
-
-	c.JSON(http.StatusOK, gin.H{"message": "device disabled"})
-}
-
-func (s *Server) enableDevice(c *gin.Context) {
-	id := c.Param("id")
-
-	if err := s.deviceMgr.EnableDevice(id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	s.wsHub.Broadcast(&websocket.Message{
-		Type:    "device_updated",
-		Payload: map[string]interface{}{"id": id, "disabled": false},
-	})
-
-	c.JSON(http.StatusOK, gin.H{"message": "device enabled"})
 }

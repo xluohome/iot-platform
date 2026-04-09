@@ -13,3 +13,11 @@ database:
 device:
   heartbeat_interval: 30
   offline_threshold: 90
+
+auth:
+  jwt_secret: "your-secret-key-change-in-production"
+  access_token_expire: 30m
+  refresh_token_expire: 168h
+  bcrypt_cost: 10
+  default_admin: "admin"
+  default_password: "admin123"

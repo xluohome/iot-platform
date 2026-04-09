@@ -44,6 +44,8 @@
     </div>
     <div class="container">
         <div class="nav">
+            <a href="#auth">Authentication</a>
+            <a href="#users">Users</a>
             <a href="#devices">Devices</a>
             <a href="#device-types">Device Types</a>
             <a href="#stats">Stats</a>
@@ -52,12 +54,151 @@
             <a href="#websocket">WebSocket</a>
         </div>
 
+        <div class="card" id="auth">
+            <div class="card-header"><h2>Authentication (认证)</h2></div>
+            <div class="card-body">
+                <p class="desc" style="color: #ff4d4f; margin-bottom: 16px;">
+                    <strong>注意:</strong> 大部分 API 需要认证。请求时需要在 Header 中添加: <code>Authorization: Bearer &lt;access_token&gt;</code>
+                </p>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/auth/register</span>
+                    <p class="desc">用户注册</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">username</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">password</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                    </div>
+                    <div class="code">{
+  "username": "testuser",
+  "password": "password123"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/auth/login</span>
+                    <p class="desc">用户登录</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">username</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">password</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                    </div>
+                    <div class="code">{
+  "username": "admin",
+  "password": "admin123"
+}</div>
+                    <p class="desc" style="margin-top: 8px;">返回:</p>
+                    <div class="code">{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "expires_in": 1800,
+  "token_type": "Bearer",
+  "user": {
+    "id": 1,
+    "username": "admin",
+    "role": "admin"
+  }
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/auth/refresh</span>
+                    <p class="desc">刷新 Access Token</p>
+                    <div class="code">{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/auth/logout</span>
+                    <p class="desc">用户登出 (需要认证)</p>
+                    <p class="desc" style="margin-top: 4px;">Header: <code>X-Refresh-Token: &lt;refresh_token&gt;</code></p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/auth/me</span>
+                    <p class="desc">获取当前用户信息 (需要认证)</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="users">
+            <div class="card-header"><h2>User Management (用户管理)</h2></div>
+            <div class="card-body">
+                <p class="desc" style="color: #ff4d4f; margin-bottom: 16px;">
+                    <strong>Admin only:</strong> 只有管理员可以访问这些接口
+                </p>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/users</span>
+                    <p class="desc">列出所有用户 (需要认证)</p>
+                    <div class="code">{
+  "users": [
+    {
+      "id": 1,
+      "username": "admin",
+      "role": "admin",
+      "disabled": false,
+      "created_at": "2024-01-01T00:00:00Z"
+    }
+  ]
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/users</span>
+                    <p class="desc">创建用户 (需要认证)</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">username</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">password</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">role</span><span class="param-type">string</span></div>
+                    </div>
+                    <div class="code">{
+  "username": "newuser",
+  "password": "password123",
+  "role": "user"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/users/:id</span>
+                    <p class="desc">获取用户详情 (需要认证)</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/users/:id</span>
+                    <p class="desc">更新用户角色 (需要认证)</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">role</span><span class="param-type">string</span></div>
+                    </div>
+                    <div class="code">{
+  "role": "admin"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/users/:id/disable</span>
+                    <p class="desc">禁用用户 (需要认证)</p>
+                    <p class="desc" style="margin-top: 4px;">禁用后该用户无法登录</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/users/:id/enable</span>
+                    <p class="desc">启用用户 (需要认证)</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span><span class="path">/api/v1/users/:id</span>
+                    <p class="desc">删除用户 (需要认证)</p>
+                    <p class="desc" style="color: #ff4d4f; margin-top: 4px;">有设备的用户无法删除，会返回错误: "该用户拥有 X 个设备，无法删除"</p>
+                </div>
+            </div>
+        </div>
+
         <div class="card" id="devices">
             <div class="card-header"><h2>Device Management</h2></div>
             <div class="card-body">
                 <div class="endpoint">
                     <span class="method get">GET</span><span class="path">/api/v1/devices</span>
-                    <p class="desc">List all registered devices</p>
+                    <p class="desc">List all registered devices (Admin sees all, users see only their own)</p>
                     <div class="code">{
   "devices": [
     {
@@ -65,6 +206,8 @@
       "name": "Device Name",
       "type_id": 1,
       "type_name": "sensor",
+      "user_id": 1,
+      "owner_name": "admin",
       "status": "online/offline",
       "disabled": false,
       "secret": "device-secret-key",
@@ -79,15 +222,17 @@
 
                 <div class="endpoint">
                     <span class="method post">POST</span><span class="path">/api/v1/devices</span>
-                    <p class="desc">Register a new device</p>
+                    <p class="desc">Register a new device (Admin can specify user_id to assign to a user)</p>
                     <div class="params">
                         <div class="param"><span class="param-name">name</span><span class="param-type">string</span><span class="param-required">required</span></div>
                         <div class="param"><span class="param-name">type</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">user_id</span><span class="param-type">uint</span><span class="param-desc">Admin only - assign device to user</span></div>
                         <div class="param"><span class="param-name">properties</span><span class="param-type">object</span></div>
                     </div>
                     <div class="code">{
   "name": "Temperature Sensor",
   "type": "sensor",
+  "user_id": 2,
   "properties": {"location": "living room"}
 }</div>
                     <p class="desc" style="margin-top: 8px; color: #ff4d4f;">返回包含 secret，用于 MQTT 认证</p>
@@ -100,14 +245,16 @@
 
                 <div class="endpoint">
                     <span class="method put">PUT</span><span class="path">/api/v1/devices/:id</span>
-                    <p class="desc">Update device information (name, type)</p>
+                    <p class="desc">Update device information (name, type, user_id) - Admin can change owner</p>
                     <div class="params">
                         <div class="param"><span class="param-name">name</span><span class="param-type">string</span></div>
                         <div class="param"><span class="param-name">type</span><span class="param-type">string</span></div>
+                        <div class="param"><span class="param-name">user_id</span><span class="param-type">uint</span><span class="param-desc">Admin only - reassign device owner</span></div>
                     </div>
                     <div class="code">{
   "name": "New Device Name",
-  "type": "actuator"
+  "type": "actuator",
+  "user_id": 3
 }</div>
                     <p class="desc" style="margin-top: 8px;">如果指定的类型不存在，会自动创建</p>
                 </div>
@@ -124,8 +271,11 @@
 
                 <div class="endpoint">
                     <span class="method put">PUT</span><span class="path">/api/v1/devices/:id/properties</span>
-                    <p class="desc">Update device properties</p>
+                    <p class="desc">Update device properties (Admin can also update owner via user_id)</p>
                     <div class="code">{
+  "name": "New Name",
+  "type": "sensor",
+  "user_id": 2,
   "temperature": 25.5,
   "humidity": 60
 }</div>

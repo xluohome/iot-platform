@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IoT Platform - Login</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            width: 100%;
+            max-width: 400px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        .login-header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .login-header p {
+            color: #666;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #5a6fd6 0%, #6a4190 100%);
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .error {
+            background: #fff2f0;
+            border: 1px solid #ffccc7;
+            color: #ff4d4f;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            display: none;
+        }
+        .error.show {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            font-size: 14px;
+            display: none;
+        }
+        .loading.show {
+            display: block;
+        }
+        .register-link {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+        .register-link a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .register-link a:hover {
+            text-decoration: underline;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+        .user-info .username {
+            font-weight: 500;
+            color: #333;
+        }
+        .user-info .role {
+            font-size: 12px;
+            color: #666;
+            background: #e6e6e6;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .btn-danger {
+            background: #ff4d4f;
+            color: white;
+        }
+        .btn-danger:hover {
+            background: #ff6b6b;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1>IoT Platform</h1>
+            <p>登录以访问设备管理</p>
+        </div>
+
+        <div id="error" class="error"></div>
+
+        <div id="loginForm">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="username" placeholder="请输入用户名" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="password" placeholder="请输入密码" autocomplete="current-password">
+            </div>
+            <button class="btn btn-primary" onclick="login()">登录</button>
+            <div class="register-link">
+                没有账号? <a href="#" onclick="showRegister()">注册</a>
+            </div>
+        </div>
+
+        <div id="registerForm" style="display: none;">
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="regUsername" placeholder="请输入用户名" autocomplete="username">
+            </div>
+            <div class="form-group">
+                <label>密码</label>
+                <input type="password" id="regPassword" placeholder="请输入密码 (至少6位)" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+                <label>确认密码</label>
+                <input type="password" id="regPassword2" placeholder="请再次输入密码" autocomplete="new-password">
+            </div>
+            <button class="btn btn-primary" onclick="register()">注册</button>
+            <div class="register-link">
+                已有账号? <a href="#" onclick="showLogin()">登录</a>
+            </div>
+        </div>
+
+        <div id="dashboardLink" style="display: none;">
+            <div class="user-info">
+                <span class="username" id="currentUser"></span>
+                <span class="role" id="currentRole"></span>
+            </div>
+            <button class="btn btn-primary" onclick="goToDashboard()">进入 Dashboard</button>
+            <button class="btn btn-danger" onclick="logout()" style="margin-top: 10px;">退出登录</button>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080/api/v1';
+
+        function showError(msg) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = msg;
+            errorEl.classList.add('show');
+        }
+
+        function hideError() {
+            document.getElementById('error').classList.remove('show');
+        }
+
+        function showLogin() {
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('registerForm').style.display = 'none';
+            hideError();
+        }
+
+        function showRegister() {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'block';
+            hideError();
+        }
+
+        async function login() {
+            hideError();
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+
+            if (!username || !password) {
+                showError('请输入用户名和密码');
+                return;
+            }
+
+            try {
+                const resp = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    showError(data.error || '登录失败');
+                    return;
+                }
+
+                localStorage.setItem('access_token', data.access_token);
+                localStorage.setItem('refresh_token', data.refresh_token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+
+                showDashboardLink(data.user);
+            } catch (err) {
+                showError('网络错误，请稍后重试');
+            }
+        }
+
+        async function register() {
+            hideError();
+            const username = document.getElementById('regUsername').value.trim();
+            const password = document.getElementById('regPassword').value;
+            const password2 = document.getElementById('regPassword2').value;
+
+            if (!username || !password) {
+                showError('请输入用户名和密码');
+                return;
+            }
+
+            if (password.length < 6) {
+                showError('密码至少6位');
+                return;
+            }
+
+            if (password !== password2) {
+                showError('两次密码不一致');
+                return;
+            }
+
+            try {
+                const resp = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    showError(data.error || '注册失败');
+                    return;
+                }
+
+                alert('注册成功，请登录');
+                showLogin();
+                document.getElementById('username').value = username;
+                document.getElementById('password').value = '';
+            } catch (err) {
+                showError('网络错误，请稍后重试');
+            }
+        }
+
+        async function logout() {
+            const refreshToken = localStorage.getItem('refresh_token');
+            
+            try {
+                await fetch(`${API_BASE}/auth/logout`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                        'X-Refresh-Token': refreshToken || ''
+                    }
+                });
+            } catch (err) {
+                console.error('Logout error:', err);
+            }
+
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user');
+
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('loginForm').style.display = 'block';
+            document.getElementById('dashboardLink').style.display = 'none';
+        }
+
+        function showDashboardLink(user) {
+            document.getElementById('loginForm').style.display = 'none';
+            document.getElementById('registerForm').style.display = 'none';
+            document.getElementById('dashboardLink').style.display = 'block';
+            document.getElementById('currentUser').textContent = user.username;
+            document.getElementById('currentRole').textContent = user.role === 'admin' ? '管理员' : '用户';
+        }
+
+        function goToDashboard() {
+            window.location.href = 'dashboard.html';
+        }
+
+        async function checkAuth() {
+            const accessToken = localStorage.getItem('access_token');
+            const userStr = localStorage.getItem('user');
+
+            if (accessToken && userStr) {
+                try {
+                    const resp = await fetch(`${API_BASE}/auth/me`, {
+                        headers: { 'Authorization': `Bearer ${accessToken}` }
+                    });
+
+                    if (resp.ok) {
+                        const user = await resp.json();
+                        localStorage.setItem('user', JSON.stringify(user));
+                        showDashboardLink(user);
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Auth check error:', err);
+                }
+
+                const refreshToken = localStorage.getItem('refresh_token');
+                if (refreshToken) {
+                    const refreshed = await refreshAccessToken();
+                    if (refreshed) {
+                        return;
+                    }
+                }
+            }
+        }
+
+        async function refreshAccessToken() {
+            const refreshToken = localStorage.getItem('refresh_token');
+            if (!refreshToken) return false;
+
+            try {
+                const resp = await fetch(`${API_BASE}/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: refreshToken })
+                });
+
+                if (!resp.ok) {
+                    logout();
+                    return false;
+                }
+
+                const data = await resp.json();
+                localStorage.setItem('access_token', data.access_token);
+
+                const userResp = await fetch(`${API_BASE}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${data.access_token}` }
+                });
+
+                if (userResp.ok) {
+                    const user = await userResp.json();
+                    localStorage.setItem('user', JSON.stringify(user));
+                    showDashboardLink(user);
+                    return true;
+                }
+            } catch (err) {
+                console.error('Token refresh error:', err);
+            }
+
+            return false;
+        }
+
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') login();
+        });
+
+        checkAuth();
+    </script>
+</body>
+</html>

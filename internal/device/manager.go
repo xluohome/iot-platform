@@ -58,13 +58,14 @@ func (m *Manager) ensureDeviceType(deviceType string) (uint, string) {
 	return 0, deviceType
 }
 
-func (m *Manager) Register(name, deviceType string, props models.Properties) (*models.Device, error) {
+func (m *Manager) Register(name, deviceType string, props models.Properties, userID uint) (*models.Device, error) {
 	typeID, _ := m.ensureDeviceType(deviceType)
 
 	device := &models.Device{
 		ID:        uuid.New().String(),
 		Name:      name,
 		TypeID:    typeID,
+		UserID:    userID,
 		Status:    models.StatusOffline,
 		Secret:    uuid.New().String(),
 		CreatedAt: time.Now(),
@@ -172,6 +173,28 @@ func (m *Manager) UpdateDeviceInfo(deviceID, name, deviceType string) error {
 		if err := m.db.Model(&models.Device{}).Where("id = ?", deviceID).Updates(updates).Error; err != nil {
 			return err
 		}
+	}
+
+	if m.onUpdate != nil {
+		go m.onUpdate(device.Device)
+	}
+
+	return nil
+}
+
+func (m *Manager) UpdateDeviceOwner(deviceID string, userID uint) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	device, ok := m.devices[deviceID]
+	if !ok {
+		return fmt.Errorf("device not found")
+	}
+
+	device.UserID = userID
+
+	if err := m.db.Model(&models.Device{}).Where("id = ?", deviceID).Update("user_id", userID).Error; err != nil {
+		return err
 	}
 
 	if m.onUpdate != nil {

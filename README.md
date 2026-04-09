@@ -59,6 +59,10 @@ iot-platform/
 ├── internal/
 │   ├── api/
 │   │   └── server.go        # REST API 服务
+│   ├── auth/
+│   │   ├── handlers.go      # 认证处理函数
+│   │   ├── jwt.go           # JWT 工具
+│   │   └── middleware.go    # 认证中间件
 │   ├── config/
 │   │   └── config.go        # 配置加载
 │   ├── device/
@@ -73,7 +77,9 @@ iot-platform/
 │   └── models/
 │       └── models.go        # 数据模型
 ├── web/
+│   ├── login.html           # 登录页面
 │   ├── dashboard.html       # Web 仪表盘
+│   ├── auth.js              # 认证中间件
 │   └── api.html             # API 文档
 ├── go.mod
 ├── go.sum
@@ -131,6 +137,14 @@ database:
 device:
   heartbeat_interval: 30    # 心跳间隔(秒)
   offline_threshold: 90    # 离线阈值(秒)
+
+auth:
+  jwt_secret: "your-secret-key-change-in-production"  # JWT 密钥
+  access_token_expire: 30m   # Access Token 过期时间
+  refresh_token_expire: 168h # Refresh Token 过期时间 (7天)
+  default_admin:
+    username: "admin"        # 默认管理员用户名
+    password: "admin123"     # 默认管理员密码
 ```
 
 ### 4.2 配置项说明
@@ -143,6 +157,9 @@ device:
 | `database.path` | iot.db | SQLite 数据库文件路径 |
 | `device.heartbeat_interval` | 30 | 设备心跳间隔(秒) |
 | `device.offline_threshold` | 90 | 设备离线判定时间(秒)，超过此时间未收到心跳则判定为离线 |
+| `auth.jwt_secret` | - | JWT 签名密钥 (生产环境必须修改) |
+| `auth.access_token_expire` | 30m | Access Token 有效期 |
+| `auth.refresh_token_expire` | 168h | Refresh Token 有效期 (7天) |
 
 ---
 
@@ -191,17 +208,24 @@ pkill -f iot-platform
 
 ## 6. 访问服务
 
-### 6.1 Web Dashboard
+### 6.1 用户登录
+
+- **地址**: http://localhost:8080/web/login.html
+- **默认账号**: `admin` / `admin123`
+- **功能**: 用户注册、登录、Token 管理
+
+### 6.2 Web Dashboard
 
 - **地址**: http://localhost:8080/web/dashboard.html
 - **功能**: 设备管理、设备类型管理、设备详情查看、禁用/启用设备
+- **要求**: 需要先登录
 
-### 6.2 API 文档
+### 6.3 API 文档
 
 - **地址**: http://localhost:8080/web/api.html
 - **功能**: REST API 文档、MQTT 主题说明、WebSocket 事件说明
 
-### 6.3 API 基础地址
+### 6.4 API 基础地址
 
 - **地址**: http://localhost:8080/api/v1
 
@@ -286,31 +310,109 @@ mosquitto_pub \
 
 ## 8. API 使用示例
 
-### 8.1 设备管理
+> **注意**: 大部分 API 需要认证。请求时需要在 Header 中添加 `Authorization: Bearer <access_token>`
+
+### 8.1 用户认证
 
 ```bash
-# 列出所有设备
-curl http://localhost:8080/api/v1/devices
-
-# 获取设备详情
-curl http://localhost:8080/api/v1/devices/<device_id>
-
-# 更新设备信息
-curl -X PUT http://localhost:8080/api/v1/devices/<device_id> \
+# 用户注册
+curl -X POST http://localhost:8080/api/v1/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"Name":"new-name","Type":"actuator"}'
+  -d '{"username":"testuser","password":"password123"}'
 
-# 禁用设备 (断开连接)
-curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/disable
+# 用户登录
+curl -X POST http://localhost:8080/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 
-# 启用设备
-curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/enable
+# 刷新 Access Token
+curl -X POST http://localhost:8080/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token":"<refresh_token>"}'
 
-# 删除设备 (仅离线设备)
-curl -X DELETE http://localhost:8080/api/v1/devices/<device_id>
+# 登出
+curl -X POST http://localhost:8080/api/v1/auth/logout \
+  -H "Authorization: Bearer <access_token>" \
+  -H "X-Refresh-Token: <refresh_token>"
+
+# 获取当前用户信息
+curl http://localhost:8080/api/v1/auth/me \
+  -H "Authorization: Bearer <access_token>"
 ```
 
-### 8.2 设备类型管理
+### 8.2 用户管理 (Admin)
+
+```bash
+# 列出所有用户
+curl http://localhost:8080/api/v1/users \
+  -H "Authorization: Bearer <access_token>"
+
+# 创建用户
+curl -X POST http://localhost:8080/api/v1/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"username":"newuser","password":"password123","role":"user"}'
+
+# 获取用户详情
+curl http://localhost:8080/api/v1/users/<user_id> \
+  -H "Authorization: Bearer <access_token>"
+
+# 更新用户角色
+curl -X PUT http://localhost:8080/api/v1/users/<user_id> \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role":"admin"}'
+
+# 禁用用户 (禁用后该用户无法登录)
+curl -X PUT http://localhost:8080/api/v1/users/<user_id>/disable \
+  -H "Authorization: Bearer <access_token>"
+
+# 启用用户
+curl -X PUT http://localhost:8080/api/v1/users/<user_id>/enable \
+  -H "Authorization: Bearer <access_token>"
+
+# 删除用户 (有设备的用户无法删除)
+curl -X DELETE http://localhost:8080/api/v1/users/<user_id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### 8.3 设备管理
+
+```bash
+# 列出所有设备 (Admin 可见全部，普通用户仅见自己的)
+curl http://localhost:8080/api/v1/devices \
+  -H "Authorization: Bearer <access_token>"
+
+# 获取设备详情
+curl http://localhost:8080/api/v1/devices/<device_id> \
+  -H "Authorization: Bearer <access_token>"
+
+# 创建设备 (Admin 可指定 user_id 分配给其他用户)
+curl -X POST http://localhost:8080/api/v1/devices \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"name":"my-device","type":"sensor","user_id":2}'
+
+# 更新设备信息 (Admin 可修改 owner)
+curl -X PUT http://localhost:8080/api/v1/devices/<device_id> \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <access_token>" \
+  -d '{"name":"new-name","type":"actuator","user_id":3}'
+
+# 禁用设备 (断开连接)
+curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/disable \
+  -H "Authorization: Bearer <access_token>"
+
+# 启用设备
+curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/enable \
+  -H "Authorization: Bearer <access_token>"
+
+# 删除设备 (仅离线设备)
+curl -X DELETE http://localhost:8080/api/v1/devices/<device_id> \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### 8.4 设备类型管理
 
 ```bash
 # 列出所有类型
@@ -330,7 +432,7 @@ curl -X PUT http://localhost:8080/api/v1/device-types/<type_id> \
 curl -X DELETE http://localhost:8080/api/v1/device-types/<type_id>
 ```
 
-### 8.3 遥测数据
+### 8.5 遥测数据
 
 ```bash
 # 获取设备遥测数据
@@ -340,7 +442,7 @@ curl "http://localhost:8080/api/v1/devices/<device_id>/telemetry?limit=100"
 curl "http://localhost:8080/api/v1/devices/<device_id>/commands?limit=50"
 ```
 
-### 8.4 发送命令
+### 8.6 发送命令
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/devices/<device_id>/command \
@@ -348,7 +450,7 @@ curl -X POST http://localhost:8080/api/v1/devices/<device_id>/command \
   -d '{"Command":"restart","Params":{"delay":5}}'
 ```
 
-### 8.5 统计信息
+### 8.7 统计信息
 
 ```bash
 # 获取平台统计
@@ -696,15 +798,25 @@ curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/disable
 
 ## 13. 安全建议
 
+### 认证系统 (已启用)
+
+平台已启用 JWT 用户认证系统:
+- Access Token: 30分钟有效期
+- Refresh Token: 7天有效期
+- 支持用户注册、登录、登出
+- 支持角色: admin / user
+
+**重要**: 生产环境务必修改 `config.yaml` 中的 `auth.jwt_secret`
+
 ### 生产环境部署
 
 1. **启用 TLS/SSL 加密**
    - HTTP API 使用 HTTPS
    - MQTT 使用 MQTT over TLS (port 8883)
 
-2. **配置用户认证系统**
-   - 添加 API Key 认证
-   - 添加 Dashboard 登录功能
+2. **修改默认密码**
+   - 默认管理员: admin / admin123
+   - 首次使用后立即修改密码
 
 3. **限制 MQTT 访问**
    - 配置 IP 白名单
@@ -746,6 +858,11 @@ curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/disable
 
 ## 版本信息
 
-- **当前版本**: 1.0.0
+- **当前版本**: 1.2.0
 - **Go 版本**: 1.21+
-- **最后更新**: 2026-04-06
+- **最后更新**: 2026-04-09
+- **更新内容**: 
+  - 用户认证系统 (JWT)
+  - 用户管理 (创建/编辑/禁用/启用/删除)
+  - 设备所有权分配
+  - 用户删除保护 (有设备无法删除)

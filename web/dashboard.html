@@ -4,7 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>IoT Platform Dashboard</title>
+    <script src="auth.js"></script>
     <style>
+        .user-info { display: flex; align-items: center; gap: 12px; }
+        .user-info .username { font-weight: 500; }
+        .user-info .role { font-size: 12px; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 4px; }
+        .header .btn-logout { background: rgba(255,77,79,0.8); }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; }
         .header { background: #1890ff; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
@@ -66,16 +71,40 @@
         .type-toggle { font-size: 12px; color: #1890ff; text-decoration: none; margin-top: 4px; display: inline-block; }
         .type-toggle:hover { text-decoration: underline; }
         .type-input-hidden { display: none; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+        .tab { padding: 10px 20px; background: white; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; }
+        .tab:hover { background: #e6f7ff; }
+        .tab.active { background: #1890ff; color: white; border-color: #1890ff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .role-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .role-badge.admin { background: #fff1b8; color: #d48806; }
+        .role-badge.user { background: #e6f7ff; color: #1890ff; }
+        .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .status-badge.active { background: #d9f7be; color: #52c41a; }
+        .status-badge.disabled { background: #ffccc7; color: #ff4d4f; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>IoT Platform Dashboard</h1>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <div class="user-info" id="userInfo" style="display: none;">
+                <span class="username" id="currentUsername"></span>
+                <span class="role" id="currentRole"></span>
+            </div>
+            <button id="btnUserMgmt" class="btn" onclick="switchTab('users')" style="display:none;">用户管理</button>
             <a href="api.html" target="_blank">API Documentation</a>
+            <button class="btn btn-logout" onclick="auth.logout()">Logout</button>
         </div>
     </div>
     <div class="container">
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('devices')">设备</button>
+            <button id="tabUsers" class="tab" onclick="switchTab('users')" style="display:none;">用户</button>
+        </div>
+        
+        <div id="devicesTab" class="tab-content active">
         <div class="stats">
             <div class="stat-card">
                 <h3>Total Devices</h3>
@@ -115,6 +144,7 @@
                             <th>ID</th>
                             <th>Name</th>
                             <th>Type</th>
+                            <th>Owner</th>
                             <th>Status</th>
                             <th>Last Seen</th>
                             <th>Actions</th>
@@ -122,6 +152,31 @@
                     </thead>
                     <tbody id="deviceTable"></tbody>
                 </table>
+            </div>
+        </div>
+        </div>
+
+        <div id="usersTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>用户管理</h2>
+                    <button class="btn btn-primary" onclick="showCreateUserModal()">+ 添加用户</button>
+                </div>
+                <div class="card-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>用户名</th>
+                                <th>角色</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTable"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
@@ -140,6 +195,12 @@
                 </select>
                 <a href="#" class="type-toggle" onclick="return toggleTypeInput('device')">Or type new type</a>
                 <input type="text" id="deviceTypeInput" class="type-input-hidden" placeholder="Type new type name">
+            </div>
+            <div class="form-group" id="deviceOwnerGroup" style="display:none;">
+                <label>Owner (Admin only)</label>
+                <select id="deviceOwnerSelect">
+                    <option value="">Assign to me</option>
+                </select>
             </div>
             <div class="modal-actions">
                 <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
@@ -187,6 +248,15 @@
                 <a href="#" class="type-toggle" onclick="return toggleTypeInput('detail')">Or type new type</a>
                 <input type="text" id="detailTypeInput" class="type-input-hidden" placeholder="Type new type name">
             </div>
+            <div class="form-group" id="detailOwnerGroup" style="margin: 12px 0; display:none;">
+                <label>Owner</label>
+                <select id="detailOwnerSelect">
+                </select>
+            </div>
+            <div class="info-row" id="detailOwnerDisplay">
+                <div class="info-label">Owner:</div>
+                <div class="info-value" id="detailOwner"></div>
+            </div>
             <div class="info-row">
                 <div class="info-label">Status:</div>
                 <div class="info-value" id="detailStatus"></div>
@@ -232,22 +302,284 @@
         </div>
     </div>
 
+    <div class="modal" id="userModal">
+        <div class="modal-content">
+            <h2 id="userModalTitle">添加用户</h2>
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="userUsername" placeholder="用户名">
+            </div>
+            <div class="form-group" id="userPasswordGroup">
+                <label>密码</label>
+                <input type="password" id="userPassword" placeholder="密码 (至少6位)">
+            </div>
+            <div class="form-group" id="userPasswordConfirmGroup">
+                <label>确认密码</label>
+                <input type="password" id="userPasswordConfirm" placeholder="再次输入密码">
+            </div>
+            <div class="form-group" id="userRoleGroup">
+                <label>角色</label>
+                <select id="userRole">
+                    <option value="user">用户 (user)</option>
+                    <option value="admin">管理员 (admin)</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeUserModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveUser()">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        const API_BASE = 'http://localhost:8080/api/v1';
         let ws;
         let allDevices = [];
         let deviceTypes = [];
         let currentDetailId = null;
+        let currentUser = null;
+        let editingUserId = null;
 
-        function init() {
+        async function init() {
+            currentUser = await auth.checkAuth();
+            if (!currentUser) return;
+            
+            document.getElementById('userInfo').style.display = 'flex';
+            document.getElementById('currentUsername').textContent = currentUser.username;
+            document.getElementById('currentRole').textContent = currentUser.role === 'admin' ? 'Admin' : 'User';
+            
+            if (currentUser.role === 'admin') {
+                document.getElementById('tabUsers').style.display = 'inline-block';
+                document.getElementById('btnUserMgmt').style.display = 'inline-block';
+                document.getElementById('deviceOwnerGroup').style.display = 'block';
+                loadUsersForSelect();
+            }
+            
             loadDeviceTypes();
             loadDevices();
             connectWebSocket();
             setInterval(loadStats, 5000);
         }
+        
+        let allUsers = [];
+        
+        function loadUsersForSelect() {
+            auth.authFetch(`${API_BASE}/users`)
+                .then(r => r.json())
+                .then(data => {
+                    allUsers = data.users || [];
+                    updateOwnerSelects();
+                });
+        }
+        
+        function updateOwnerSelects() {
+            const options = allUsers.map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
+            document.getElementById('deviceOwnerSelect').innerHTML = '<option value="">Assign to me</option>' + options;
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tabName === 'users') {
+                document.getElementById('tabUsers').classList.add('active');
+                document.getElementById('usersTab').classList.add('active');
+                loadUsers();
+            } else {
+                document.querySelector('.tab').classList.add('active');
+                document.getElementById('devicesTab').classList.add('active');
+            }
+        }
+
+        function loadUsers() {
+            auth.authFetch(`${API_BASE}/users`)
+                .then(r => r.json())
+                .then(data => {
+                    renderUserTable(data.users || []);
+                })
+                .catch(err => {
+                    console.error('Failed to load users:', err);
+                });
+        }
+
+        function renderUserTable(users) {
+            const tbody = document.getElementById('userTable');
+            if (users.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无用户</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = users.map(u => `
+                <tr>
+                    <td>${u.id}</td>
+                    <td>${u.username}</td>
+                    <td><span class="role-badge ${u.role}">${u.role === 'admin' ? '管理员' : '用户'}</span></td>
+                    <td><span class="status-badge ${u.disabled ? 'disabled' : 'active'}">${u.disabled ? '已禁用' : '正常'}</span></td>
+                    <td>${u.created_at ? new Date(u.created_at).toLocaleString() : '-'}</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="showEditUserModal(${u.id})">编辑</button>
+                        ${u.id !== currentUser.id ? (
+                            u.disabled ? 
+                                `<button class="btn btn-sm btn-primary" onclick="enableUser(${u.id})">启用</button>` :
+                                `<button class="btn btn-sm btn-danger" onclick="disableUser(${u.id})">禁用</button>`
+                        ) : ''}
+                        ${u.id !== currentUser.id ? `<button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${u.username}')">删除</button>` : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function showCreateUserModal() {
+            editingUserId = null;
+            document.getElementById('userModalTitle').textContent = '添加用户';
+            document.getElementById('userUsername').value = '';
+            document.getElementById('userUsername').readOnly = false;
+            document.getElementById('userPassword').value = '';
+            document.getElementById('userPasswordConfirm').value = '';
+            document.getElementById('userPasswordGroup').style.display = 'block';
+            document.getElementById('userPasswordConfirmGroup').style.display = 'block';
+            document.getElementById('userRoleGroup').style.display = 'block';
+            document.getElementById('userRole').value = 'user';
+            document.getElementById('userModal').classList.add('active');
+        }
+
+        function showEditUserModal(id) {
+            editingUserId = id;
+            const users = document.querySelectorAll('#userTable tr');
+            let userData = null;
+            users.forEach(row => {
+                if (row.cells[0].textContent == id) {
+                    const cells = row.cells;
+                    userData = {
+                        username: cells[1].textContent,
+                        role: cells[2].textContent.includes('管理员') ? 'admin' : 'user'
+                    };
+                }
+            });
+            
+            if (!userData) return;
+            
+            document.getElementById('userModalTitle').textContent = '编辑用户';
+            document.getElementById('userUsername').value = userData.username;
+            document.getElementById('userUsername').readOnly = true;
+            document.getElementById('userPassword').value = '';
+            document.getElementById('userPasswordConfirm').value = '';
+            document.getElementById('userPasswordGroup').style.display = 'none';
+            document.getElementById('userPasswordConfirmGroup').style.display = 'none';
+            document.getElementById('userRoleGroup').style.display = 'block';
+            document.getElementById('userRole').value = userData.role;
+            document.getElementById('userModal').classList.add('active');
+        }
+
+        function closeUserModal() {
+            document.getElementById('userModal').classList.remove('active');
+            editingUserId = null;
+        }
+
+        function saveUser() {
+            const username = document.getElementById('userUsername').value.trim();
+            const password = document.getElementById('userPassword').value;
+            const passwordConfirm = document.getElementById('userPasswordConfirm').value;
+            const role = document.getElementById('userRole').value;
+
+            if (!username) {
+                alert('请输入用户名');
+                return;
+            }
+
+            if (editingUserId === null) {
+                if (!password || password.length < 6) {
+                    alert('密码至少6位');
+                    return;
+                }
+                if (password !== passwordConfirm) {
+                    alert('两次输入的密码不一致');
+                    return;
+                }
+            }
+
+            if (editingUserId === null) {
+                auth.authFetch(`${API_BASE}/users`, {
+                    method: 'POST',
+                    body: JSON.stringify({ username, password, role })
+                }).then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        closeUserModal();
+                        loadUsers();
+                    }
+                }).catch(err => {
+                    alert('创建用户失败: ' + (err.error || err.message));
+                });
+            } else {
+                auth.authFetch(`${API_BASE}/users/${editingUserId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ role })
+                }).then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        closeUserModal();
+                        loadUsers();
+                    }
+                }).catch(err => {
+                    alert('更新用户失败: ' + (err.error || err.message));
+                });
+            }
+        }
+
+        function disableUser(id) {
+            if (!confirm('确定禁用此用户吗？禁用后该用户将无法登录。')) return;
+            auth.authFetch(`${API_BASE}/users/${id}/disable`, { method: 'PUT' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadUsers();
+                    }
+                }).catch(err => {
+                    alert('禁用用户失败: ' + (err.error || err.message));
+                });
+        }
+
+        function enableUser(id) {
+            auth.authFetch(`${API_BASE}/users/${id}/enable`, { method: 'PUT' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadUsers();
+                    }
+                }).catch(err => {
+                    alert('启用用户失败: ' + (err.error || err.message));
+                });
+        }
+
+        function deleteUser(id, username) {
+            if (id === currentUser.id) {
+                alert('不能删除当前登录用户');
+                return;
+            }
+            if (!confirm(`确定删除用户 "${username}" 吗？此操作不可恢复。`)) return;
+            auth.authFetch(`${API_BASE}/users/${id}`, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadUsers();
+                    }
+                }).catch(err => {
+                    alert('删除用户失败: ' + (err.error || err.message));
+                });
+        }
 
         function loadDeviceTypes() {
-            fetch(`${API_BASE}/device-types`)
+            auth.authFetch(`${API_BASE}/device-types`)
                 .then(r => r.json())
                 .then(data => {
                     deviceTypes = data.device_types || [];
@@ -307,9 +639,8 @@
                 alert('Please enter type name');
                 return;
             }
-            fetch(`${API_BASE}/device-types`, {
+            auth.authFetch(`${API_BASE}/device-types`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name })
             }).then(r => r.json())
             .then(() => {
@@ -328,9 +659,8 @@
             const type = deviceTypes.find(t => t.name === oldName);
             if (!type) return;
 
-            fetch(`${API_BASE}/device-types/${type.id}`, {
+            auth.authFetch(`${API_BASE}/device-types/${type.id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name: newName })
             }).then(r => r.json())
             .then(() => {
@@ -348,7 +678,7 @@
             }
             if (!confirm('Delete this device type?')) return;
             
-            fetch(`${API_BASE}/device-types/${id}`, { method: 'DELETE' })
+            auth.authFetch(`${API_BASE}/device-types/${id}`, { method: 'DELETE' })
                 .then(r => {
                     if (!r.ok) {
                         return r.json().then(data => Promise.reject(data));
@@ -367,7 +697,7 @@
         }
 
         function loadDevices() {
-            fetch(`${API_BASE}/devices`)
+            auth.authFetch(`${API_BASE}/devices`)
                 .then(r => r.json())
                 .then(data => {
                     allDevices = data.devices || [];
@@ -382,7 +712,7 @@
             
             const tbody = document.getElementById('deviceTable');
             if (filtered.length === 0) {
-                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No devices found</td></tr>';
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No devices found</td></tr>';
                 return;
             }
 
@@ -391,6 +721,7 @@
                     <td title="${d.id}">${d.id.substring(0, 8)}...</td>
                     <td>${d.name}</td>
                     <td>${d.type_name || '-'}</td>
+                    <td>${d.owner_name || '-'}</td>
                     <td>${d.disabled ? '<span class="status" style="background:#ffccc7;color:#ff4d4f">disabled</span>' : '<span class="status ' + d.status + '">' + d.status + '</span>'}</td>
                     <td>${d.last_seen ? new Date(d.last_seen).toLocaleString() : '-'}</td>
                     <td>
@@ -403,7 +734,7 @@
         }
 
         function loadStats() {
-            fetch(`${API_BASE}/stats`)
+            auth.authFetch(`${API_BASE}/stats`)
                 .then(r => r.json())
                 .then(data => {
                     document.getElementById('totalDevices').textContent = data.total;
@@ -447,10 +778,18 @@
                 alert('Please enter device name');
                 return;
             }
-            fetch(`${API_BASE}/devices`, {
+            
+            const body = { name, type, properties: {} };
+            if (currentUser.role === 'admin') {
+                const ownerSelect = document.getElementById('deviceOwnerSelect');
+                if (ownerSelect.value) {
+                    body.user_id = parseInt(ownerSelect.value);
+                }
+            }
+            
+            auth.authFetch(`${API_BASE}/devices`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, type, properties: {} })
+                body: JSON.stringify(body)
             }).then(r => r.json())
             .then(d => {
                 closeModal();
@@ -462,7 +801,7 @@
 
         function showDetail(id) {
             updateTypeSelects();
-            fetch(`${API_BASE}/devices/${id}`)
+            auth.authFetch(`${API_BASE}/devices/${id}`)
                 .then(r => r.json())
                 .then(d => {
                     currentDetailId = id;
@@ -492,6 +831,18 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                     document.getElementById('btnEnable').style.display = d.disabled ? 'inline-block' : 'none';
                     document.getElementById('detailLastSeen').textContent = d.last_seen ? new Date(d.last_seen).toLocaleString() : '-';
                     document.getElementById('detailCreated').textContent = d.created_at ? new Date(d.created_at).toLocaleString() : '-';
+                    
+                    if (currentUser.role === 'admin') {
+                        document.getElementById('detailOwnerDisplay').style.display = 'none';
+                        document.getElementById('detailOwnerGroup').style.display = 'block';
+                        const ownerOptions = allUsers.map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
+                        document.getElementById('detailOwnerSelect').innerHTML = ownerOptions;
+                        document.getElementById('detailOwnerSelect').value = d.user_id || '';
+                    } else {
+                        document.getElementById('detailOwnerDisplay').style.display = 'flex';
+                        document.getElementById('detailOwnerGroup').style.display = 'none';
+                        document.getElementById('detailOwner').textContent = d.owner_name || '-';
+                    }
                     
                     let props = {};
                     if (d.properties) {
@@ -552,10 +903,17 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                 return;
             }
 
-            fetch(`${API_BASE}/devices/${currentDetailId}/properties`, {
+            const body = { name, type, ...properties };
+            if (currentUser.role === 'admin') {
+                const ownerSelect = document.getElementById('detailOwnerSelect');
+                if (ownerSelect.style.display !== 'none' && ownerSelect.value) {
+                    body.user_id = parseInt(ownerSelect.value);
+                }
+            }
+
+            auth.authFetch(`${API_BASE}/devices/${currentDetailId}/properties`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, type, ...properties })
+                body: JSON.stringify(body)
             }).then(r => {
                 if (r.ok) {
                     closeDetailModal();
@@ -569,7 +927,7 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
 
         function deleteDevice(id) {
             if (confirm('Delete this device?')) {
-                fetch(`${API_BASE}/devices/${id}`, { method: 'DELETE' }).then(r => r.json()).then(data => {
+                auth.authFetch(`${API_BASE}/devices/${id}`, { method: 'DELETE' }).then(r => r.json()).then(data => {
                     if (data.error) {
                         alert(data.error);
                     } else {
@@ -584,7 +942,7 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
         function disableDevice() {
             if (!currentDetailId) return;
             if (!confirm('Disable this device? It will be disconnected.')) return;
-            fetch(`${API_BASE}/devices/${currentDetailId}/disable`, { method: 'PUT' })
+            auth.authFetch(`${API_BASE}/devices/${currentDetailId}/disable`, { method: 'PUT' })
                 .then(r => r.json())
                 .then(data => {
                     if (data.error) {
@@ -598,7 +956,7 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
 
         function enableDevice() {
             if (!currentDetailId) return;
-            fetch(`${API_BASE}/devices/${currentDetailId}/enable`, { method: 'PUT' })
+            auth.authFetch(`${API_BASE}/devices/${currentDetailId}/enable`, { method: 'PUT' })
                 .then(r => r.json())
                 .then(data => {
                     if (data.error) {
@@ -611,7 +969,7 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
         }
 
         function showSecret(id) {
-            fetch(`${API_BASE}/devices/${id}`)
+            auth.authFetch(`${API_BASE}/devices/${id}`)
                 .then(r => r.json())
                 .then(d => {
                     document.getElementById('secretDeviceId').value = d.id;

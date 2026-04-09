@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"iot-platform/internal/api"
+	"iot-platform/internal/auth"
 	"iot-platform/internal/config"
 	"iot-platform/internal/device"
 	"iot-platform/internal/mqtt"
@@ -24,6 +25,10 @@ func main() {
 	store, err := storage.New(&cfg.Database)
 	if err != nil {
 		log.Fatalf("Failed to initialize storage: %v", err)
+	}
+
+	if err := initDefaultAdmin(store, cfg); err != nil {
+		log.Printf("Warning: failed to create default admin: %v", err)
 	}
 
 	deviceMgr := device.NewManager(store.DB(), store)
@@ -53,7 +58,7 @@ func main() {
 		})
 	})
 
-	apiServer := api.NewServer(&cfg.Server, deviceMgr, mqttServer, store, wsHub)
+	apiServer := api.NewServer(cfg, deviceMgr, mqttServer, store, wsHub)
 
 	go func() {
 		log.Printf("Starting HTTP API server on port %s", cfg.Server.HTTPAddr)
@@ -76,4 +81,29 @@ func main() {
 	mqttServer.Stop()
 
 	log.Println("Goodbye!")
+}
+
+func initDefaultAdmin(store *storage.Store, cfg *config.Config) error {
+	username := cfg.Auth.DefaultAdmin
+	if username == "" {
+		return nil
+	}
+
+	existing, _ := store.GetUserByUsername(username)
+	if existing != nil {
+		return nil
+	}
+
+	passwordHash, err := auth.HashPassword(cfg.Auth.DefaultPassword)
+	if err != nil {
+		return err
+	}
+
+	user := &models.User{
+		Username:     username,
+		PasswordHash: passwordHash,
+		Role:         "admin",
+	}
+
+	return store.CreateUser(user)
 }
