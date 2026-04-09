@@ -559,25 +559,20 @@
             loadDevices();
             connectWebSocket();
             setInterval(loadStats, 5000);
+            
+            window.addEventListener('hashchange', handleHashChange);
+            handleHashChange();
         }
         
-        let allUsers = [];
-        
-        function loadUsersForSelect() {
-            auth.authFetch(`${API_BASE}/users`)
-                .then(r => r.json())
-                .then(data => {
-                    allUsers = data.users || [];
-                    updateOwnerSelects();
-                });
+        function handleHashChange() {
+            const tabName = window.location.hash.slice(1) || 'devices';
+            const validTabs = ['devices', 'users', 'alerts', 'rules'];
+            if (validTabs.includes(tabName)) {
+                activateTab(tabName);
+            }
         }
         
-        function updateOwnerSelects() {
-            const options = allUsers.map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
-            document.getElementById('deviceOwnerSelect').innerHTML = '<option value="">Assign to me</option>' + options;
-        }
-
-        function switchTab(tabName) {
+        function activateTab(tabName) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             
@@ -598,6 +593,26 @@
                 document.querySelector('.tab').classList.add('active');
                 document.getElementById('devicesTab').classList.add('active');
             }
+        }
+        
+        let allUsers = [];
+        
+        function loadUsersForSelect() {
+            auth.authFetch(`${API_BASE}/users`)
+                .then(r => r.json())
+                .then(data => {
+                    allUsers = data.users || [];
+                    updateOwnerSelects();
+                });
+        }
+        
+        function updateOwnerSelects() {
+            const options = allUsers.map(u => `<option value="${u.id}">${u.username} (${u.role})</option>`).join('');
+            document.getElementById('deviceOwnerSelect').innerHTML = '<option value="">Assign to me</option>' + options;
+        }
+
+        function switchTab(tabName) {
+            window.location.hash = tabName;
         }
 
         function loadUsers() {
