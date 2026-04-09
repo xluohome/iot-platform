@@ -1428,6 +1428,9 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                         } catch(e) {}
                         
                         let selectedDeviceId = r.device_id;
+                        let savedFieldValue;
+                        
+                        updateConditionFields();
                         
                         if (r.condition_type === 'expression') {
                             document.getElementById('ruleExpression').value = r.expression || '';
@@ -1442,14 +1445,15 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                                 document.getElementById('thresholdField').value = conditions.field || 'temperature';
                                 document.getElementById('thresholdOp').value = conditions.operator || '>';
                                 document.getElementById('thresholdValue').value = conditions.value || '';
+                                savedFieldValue = conditions.field;
                             } catch(e) {}
                         }
                         
-                        updateConditionFields();
-                        
                         if (selectedDeviceId) {
                             loadDevicesPromise.then(() => {
-                                updateFieldSelectForDevice(selectedDeviceId, r.condition_type);
+                                if (selectedDeviceId) {
+                                    updateFieldSelectForDevice(selectedDeviceId, r.condition_type, savedFieldValue);
+                                }
                             });
                         }
                     });
@@ -1467,18 +1471,28 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                 return;
             }
             
-            updateFieldSelectForDevice(deviceId, conditionType);
+            updateFieldSelectForDevice(deviceId, conditionType, undefined);
         }
         
-        function updateFieldSelectForDevice(deviceId, conditionType) {
-            const device = window.allDevicesForRule?.find(d => d.id === deviceId);
-            const currentValue = document.getElementById('thresholdField').value;
+        function updateFieldSelectForDevice(deviceId, conditionType, savedFieldValue) {
+            let device = window.allDevicesForRule?.find(d => d.id === deviceId);
             
             if (!device) {
-                updateFieldSelectWithDefaults();
+                loadDevicesForRuleSelect().then(() => {
+                    device = window.allDevicesForRule?.find(d => d.id === deviceId);
+                    if (device) {
+                        doUpdateFieldSelect(device, conditionType, savedFieldValue);
+                    } else {
+                        updateFieldSelectWithDefaults(savedFieldValue);
+                    }
+                });
                 return;
             }
             
+            doUpdateFieldSelect(device, conditionType, savedFieldValue);
+        }
+        
+        function doUpdateFieldSelect(device, conditionType, savedFieldValue) {
             let fields = [];
             try {
                 fields = Object.keys(JSON.parse(device.properties || '{}'));
@@ -1488,11 +1502,7 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                 fields = ['temperature', 'humidity', 'pressure', 'battery', 'status'];
             }
             
-            updateFieldSelect(fields);
-            
-            if (currentValue && fields.includes(currentValue)) {
-                document.getElementById('thresholdField').value = currentValue;
-            }
+            updateFieldSelect(fields, true, savedFieldValue);
             
             if (conditionType === 'status') {
                 document.getElementById('statusValue').innerHTML = `
@@ -1502,16 +1512,30 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
             }
         }
         
-        function updateFieldSelect(fields) {
+        function updateFieldSelect(fields, preserveValue, forcedValue) {
             const select = document.getElementById('thresholdField');
-            const currentValue = select.value;
+            let valueToSet;
+            
+            if (forcedValue && fields.includes(forcedValue)) {
+                valueToSet = forcedValue;
+            } else if (preserveValue) {
+                const currentValue = select.value;
+                valueToSet = (currentValue && fields.includes(currentValue)) ? currentValue : null;
+            }
+            
             select.innerHTML = fields.map(f => 
                 `<option value="${f}">${f}</option>`
             ).join('');
+            
+            if (valueToSet && fields.includes(valueToSet)) {
+                select.value = valueToSet;
+            } else if (fields.length > 0) {
+                select.value = fields[0];
+            }
         }
         
-        function updateFieldSelectWithDefaults() {
-            updateFieldSelect(['temperature', 'humidity', 'pressure', 'battery', 'status']);
+        function updateFieldSelectWithDefaults(savedFieldValue) {
+            updateFieldSelect(['temperature', 'humidity', 'pressure', 'battery', 'status'], false, savedFieldValue);
         }
 
         function closeRuleModal() {

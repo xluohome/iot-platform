@@ -858,11 +858,158 @@ curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/disable
 
 ## 版本信息
 
-- **当前版本**: 1.2.0
+- **当前版本**: 1.3.0
 - **Go 版本**: 1.21+
 - **最后更新**: 2026-04-09
 - **更新内容**: 
-  - 用户认证系统 (JWT)
-  - 用户管理 (创建/编辑/禁用/启用/删除)
-  - 设备所有权分配
-  - 用户删除保护 (有设备无法删除)
+  - 告警规则引擎 (Alert Rule Engine)
+  - 实时告警通知 (WebSocket)
+  - URL Hash 路由支持 (页面刷新保持当前 Tab)
+  - Dashboard Tab 间导航优化
+
+---
+
+## 14. 告警规则引擎 (Alert Rule Engine)
+
+### 14.1 功能概述
+
+告警规则引擎用于监控设备遥测数据，当条件满足时自动触发告警。
+
+### 14.2 支持的条件类型
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `threshold` | 阈值条件 | temperature > 30 |
+| `status` | 设备状态 | status == "offline" |
+| `change` | 变化检测 | (暂不支持) |
+| `expression` | 表达式条件 | temperature > 25 and humidity > 50 |
+
+### 14.3 支持的动作类型
+
+| 类型 | 说明 |
+|------|------|
+| `websocket` | 通过 WebSocket 推送实时告警 |
+| `webhook` | 发送 HTTP POST 请求到指定 URL |
+| `mqtt` | 发布 MQTT 消息到指定主题 |
+| `dashboard` | 在 Dashboard 中显示告警 |
+
+### 14.4 优先级
+
+| 优先级 | 值 | 说明 |
+|--------|-----|------|
+| 高 | 1 | 紧急告警 |
+| 中 | 2 | 普通告警 |
+| 低 | 3 | 信息告警 |
+
+### 14.5 规则管理 API
+
+```bash
+# 创建告警规则
+curl -X POST http://localhost:8080/api/v1/alert-rules \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "温度过高告警",
+    "device_id": "<device_id>",
+    "condition_type": "threshold",
+    "conditions": {"field": "temperature", "operator": ">", "value": 30},
+    "actions": {"type": "dashboard"},
+    "priority": 1
+  }'
+
+# 创建表达式规则
+curl -X POST http://localhost:8080/api/v1/alert-rules \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "温湿度复合告警",
+    "device_id": "<device_id>",
+    "condition_type": "expression",
+    "conditions": {},
+    "expression": "temperature > 25 and humidity > 50",
+    "actions": {"type": "dashboard"},
+    "priority": 2
+  }'
+
+# 列出规则
+curl http://localhost:8080/api/v1/alert-rules \
+  -H "Authorization: Bearer <token>"
+
+# 启用/禁用规则
+curl -X PUT http://localhost:8080/api/v1/alert-rules/<rule_id>/enable
+curl -X PUT http://localhost:8080/api/v1/alert-rules/<rule_id>/disable
+
+# 删除规则
+curl -X DELETE http://localhost:8080/api/v1/alert-rules/<rule_id> \
+  -H "Authorization: Bearer <token>"
+```
+
+### 14.6 告警管理 API
+
+```bash
+# 获取告警列表
+curl http://localhost:8080/api/v1/alerts \
+  -H "Authorization: Bearer <token>"
+
+# 获取告警统计
+curl http://localhost:8080/api/v1/alerts/stats \
+  -H "Authorization: Bearer <token>"
+
+# 确认告警
+curl -X PUT http://localhost:8080/api/v1/alerts/<alert_id>/acknowledge \
+  -H "Authorization: Bearer <token>"
+
+# 解决告警
+curl -X PUT http://localhost:8080/api/v1/alerts/<alert_id>/resolve \
+  -H "Authorization: Bearer <token>"
+```
+
+### 14.7 表达式语法
+
+表达式条件使用 [expr-lang/expr](https://expr-lang.org/) 语法。
+
+**可用变量**:
+- `temperature` - 温度
+- `humidity` - 湿度
+- `pressure` - 压力
+- `battery` - 电量
+- `status` - 状态 ("online"/"offline")
+
+**示例**:
+```
+temperature > 30
+humidity < 60 and temperature > 20
+status == "offline"
+temperature >= 25 or humidity >= 80
+```
+
+### 14.8 限制
+
+- 每个用户最多创建 10 条规则
+- 告警历史保留 7 天
+- 规则触发后有冷却时间（默认 5 分钟），防止重复告警
+
+---
+
+## 15. Dashboard URL 路由
+
+Dashboard 支持 URL Hash 路由，页面刷新后保持当前 Tab。
+
+### 15.1 支持的路由
+
+| URL | 显示内容 |
+|-----|----------|
+| `dashboard.html#devices` | 设备列表 |
+| `dashboard.html#users` | 用户管理 (Admin) |
+| `dashboard.html#alerts` | 告警中心 |
+| `dashboard.html#rules` | 告警规则 |
+
+### 15.2 示例
+
+```bash
+# 直接打开告警中心
+open http://localhost:8080/web/dashboard.html#alerts
+
+# 直接打开告警规则
+open http://localhost:8080/web/dashboard.html#rules
+```
