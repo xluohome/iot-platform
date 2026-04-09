@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"iot-platform/internal/alert"
 	"iot-platform/internal/auth"
 	"iot-platform/internal/config"
 	"iot-platform/internal/device"
@@ -27,9 +28,10 @@ type Server struct {
 	jwtManager     *auth.JWTManager
 	authHandler    *auth.AuthHandler
 	authMiddleware *auth.AuthMiddleware
+	alertHandler   *alert.Handler
 }
 
-func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.Server, store *storage.Store, wsHub *websocket.Hub) *Server {
+func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.Server, store *storage.Store, wsHub *websocket.Hub, alertHandler *alert.Handler) *Server {
 	r := gin.Default()
 
 	r.Use(func(c *gin.Context) {
@@ -57,6 +59,7 @@ func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.S
 		jwtManager:     jwtManager,
 		authHandler:    authHandler,
 		authMiddleware: authMiddleware,
+		alertHandler:   alertHandler,
 	}
 
 	s.setupRoutes()
@@ -118,6 +121,25 @@ func (s *Server) setupRoutes() {
 		}
 
 		api.GET("/stats", s.getStats)
+
+		alerts := api.Group("/alerts")
+		{
+			alerts.GET("", s.alertHandler.ListAlerts)
+			alerts.GET("/stats", s.alertHandler.GetAlertStats)
+			alerts.PUT("/:id/acknowledge", s.alertHandler.AcknowledgeAlert)
+			alerts.PUT("/:id/resolve", s.alertHandler.ResolveAlert)
+		}
+
+		alertRules := api.Group("/alert-rules")
+		{
+			alertRules.GET("", s.alertHandler.ListRules)
+			alertRules.POST("", s.alertHandler.CreateRule)
+			alertRules.GET("/:id", s.alertHandler.GetRule)
+			alertRules.PUT("/:id", s.alertHandler.UpdateRule)
+			alertRules.DELETE("/:id", s.alertHandler.DeleteRule)
+			alertRules.PUT("/:id/enable", s.alertHandler.EnableRule)
+			alertRules.PUT("/:id/disable", s.alertHandler.DisableRule)
+		}
 	}
 
 	s.router.GET("/health", func(c *gin.Context) {

@@ -52,6 +52,8 @@
             <a href="#telemetry">Telemetry</a>
             <a href="#commands">Commands</a>
             <a href="#websocket">WebSocket</a>
+            <a href="#alert-rules">Alert Rules</a>
+            <a href="#alerts">Alerts</a>
         </div>
 
         <div class="card" id="auth">
@@ -479,6 +481,194 @@
                         <td style="padding: 10px; border: 1px solid #eee;">Command response (命令响应)</td>
                     </tr>
                 </table>
+            </div>
+        </div>
+
+        <div class="card" id="alert-rules">
+            <div class="card-header"><h2>Alert Rules (告警规则)</h2></div>
+            <div class="card-body">
+                <p class="desc" style="margin-bottom: 16px;">
+                    告警规则用于监控设备数据并在条件满足时触发告警。每个用户最多创建 10 条规则。
+                </p>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/alert-rules</span>
+                    <p class="desc">列出用户的所有告警规则</p>
+                    <div class="code">{
+  "rules": [
+    {
+      "id": "uuid-string",
+      "name": "温度过高告警",
+      "description": "当温度超过30°C时告警",
+      "device_id": "device-uuid",
+      "condition_type": "threshold",
+      "conditions": "{\"field\":\"properties.temperature\",\"operator\":\">\",\"value\":30}",
+      "actions": "[{\"type\":\"websocket\",\"enabled\":true}]",
+      "priority": 3,
+      "enabled": true,
+      "cooldown": 300,
+      "created_at": "2026-04-09T12:00:00Z"
+    }
+  ],
+  "total": 1,
+  "max": 10
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/alert-rules</span>
+                    <p class="desc">创建告警规则</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">name</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">description</span><span class="param-type">string</span></div>
+                        <div class="param"><span class="param-name">device_id</span><span class="param-type">string</span></div>
+                        <div class="param"><span class="param-name">condition_type</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">conditions</span><span class="param-type">object</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">actions</span><span class="param-type">object</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">priority</span><span class="param-type">int</span></div>
+                        <div class="param"><span class="param-name">cooldown</span><span class="param-type">int</span></div>
+                    </div>
+                    <div class="code">{
+  "name": "温度过高告警",
+  "description": "当温度超过30°C时告警",
+  "device_id": "device-uuid",
+  "condition_type": "threshold",
+  "conditions": {
+    "field": "properties.temperature",
+    "operator": ">",
+    "value": 30
+  },
+  "actions": {
+    "websocket": {"enabled": true},
+    "webhook": {"enabled": true, "url": "https://example.com/webhook"},
+    "mqtt": {"enabled": true, "topic": "alerts/${device.id}"},
+    "dashboard": {"enabled": true, "priority": "high"}
+  },
+  "priority": 3,
+  "cooldown": 300,
+  "enabled": true
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/alert-rules/:id</span>
+                    <p class="desc">更新告警规则</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span><span class="path">/api/v1/alert-rules/:id</span>
+                    <p class="desc">删除告警规则</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/alert-rules/:id/enable</span>
+                    <p class="desc">启用告警规则</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/alert-rules/:id/disable</span>
+                    <p class="desc">禁用告警规则</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="alerts">
+            <div class="card-header"><h2>Alerts (告警)</h2></div>
+            <div class="card-body">
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/alerts</span>
+                    <p class="desc">列出告警记录</p>
+                    <p class="desc">Query: <code>status</code> (active/acknowledged/resolved), <code>limit</code>, <code>offset</code></p>
+                    <div class="code">{
+  "alerts": [
+    {
+      "id": "alert-uuid",
+      "rule_id": "rule-uuid",
+      "rule_name": "温度过高告警",
+      "device_id": "device-uuid",
+      "device_name": "温度传感器001",
+      "status": "active",
+      "priority": 3,
+      "trigger_value": "35.5",
+      "message": "温度过高告警: 35.5",
+      "created_at": "2026-04-09T12:05:00Z"
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/alerts/stats</span>
+                    <p class="desc">获取告警统计</p>
+                    <div class="code">{
+  "active_count": 5,
+  "acknowledged_count": 2,
+  "today_count": 10
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/alerts/:id/acknowledge</span>
+                    <p class="desc">确认告警</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method put">PUT</span><span class="path">/api/v1/alerts/:id/resolve</span>
+                    <p class="desc">解决告警</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="alert-condition-types">
+            <div class="card-header"><h2>Condition Types (条件类型)</h2></div>
+            <div class="card-body">
+                <p class="desc" style="margin-bottom: 16px;">
+                    支持以下条件类型：
+                </p>
+
+                <div class="endpoint">
+                    <span class="method">threshold</span>
+                    <p class="desc">阈值条件 - 当字段值满足条件时触发</p>
+                    <div class="code">{
+  "type": "threshold",
+  "field": "properties.temperature",
+  "operator": ">",
+  "value": 30
+}</div>
+                    <p class="desc">操作符: <code>></code>, <code><</code>, <code>>=</code>, <code><=</code>, <code>==</code>, <code>!=</code>, <code>contains</code>, <code>startsWith</code>, <code>endsWith</code>, <code>matches</code></p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method">status</span>
+                    <p class="desc">设备状态条件 - 当设备状态变化时触发</p>
+                    <div class="code">{
+  "type": "status",
+  "status": "offline",
+  "duration": 300
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method">change</span>
+                    <p class="desc">属性变化条件 - 当字段值变化时触发</p>
+                    <div class="code">{
+  "type": "change",
+  "field": "properties.status",
+  "previous_value": "idle"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method">expression</span>
+                    <p class="desc">表达式条件 - 使用表达式求值</p>
+                    <div class="code">{
+  "type": "expression",
+  "expression": "device.properties.temperature > 30 AND device.properties.humidity < 40"
+}</div>
+                </div>
             </div>
         </div>
     </div>

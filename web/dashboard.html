@@ -83,6 +83,19 @@
         .status-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
         .status-badge.active { background: #d9f7be; color: #52c41a; }
         .status-badge.disabled { background: #ffccc7; color: #ff4d4f; }
+        .priority-badge { padding: 2px 8px; border-radius: 4px; font-size: 12px; }
+        .priority-badge.high { background: #ffccc7; color: #ff4d4f; }
+        .priority-badge.medium { background: #fff1b8; color: #d48806; }
+        .priority-badge.low { background: #e6f7ff; color: #1890ff; }
+        .alert-item { padding: 12px; border-bottom: 1px solid #eee; }
+        .alert-item:last-child { border-bottom: none; }
+        .alert-item .alert-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .alert-item .alert-title { font-weight: 500; }
+        .alert-item .alert-meta { font-size: 12px; color: #999; }
+        .alert-item .alert-actions { display: flex; gap: 4px; }
+        .alert-filter { display: flex; gap: 8px; margin-bottom: 16px; }
+        .alert-filter button { padding: 6px 12px; border: 1px solid #ddd; background: white; border-radius: 4px; cursor: pointer; }
+        .alert-filter button.active { background: #1890ff; color: white; border-color: #1890ff; }
     </style>
 </head>
 <body>
@@ -94,6 +107,7 @@
                 <span class="role" id="currentRole"></span>
             </div>
             <button id="btnUserMgmt" class="btn" onclick="switchTab('users')" style="display:none;">用户管理</button>
+            <button id="btnAlertMgmt" class="btn" onclick="switchTab('alerts')" style="display:none;">告警中心</button>
             <a href="api.html" target="_blank">API Documentation</a>
             <button class="btn btn-logout" onclick="auth.logout()">Logout</button>
         </div>
@@ -102,6 +116,8 @@
         <div class="tabs">
             <button class="tab active" onclick="switchTab('devices')">设备</button>
             <button id="tabUsers" class="tab" onclick="switchTab('users')" style="display:none;">用户</button>
+            <button id="tabAlerts" class="tab" onclick="switchTab('alerts')" style="display:none;">告警中心</button>
+            <button id="tabRules" class="tab" onclick="switchTab('rules')" style="display:none;">告警规则</button>
         </div>
         
         <div id="devicesTab" class="tab-content active">
@@ -177,6 +193,187 @@
                         <tbody id="userTable"></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+
+        <div id="alertsTab" class="tab-content">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>活跃告警</h3>
+                    <div class="value" id="activeAlerts" style="color: #ff4d4f;">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>已确认</h3>
+                    <div class="value" id="acknowledgedAlerts" style="color: #faad14;">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>今日新增</h3>
+                    <div class="value" id="todayAlerts" style="color: #1890ff;">0</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2>告警记录</h2>
+                </div>
+                <div class="card-body">
+                    <div class="alert-filter">
+                        <button class="active" onclick="filterAlerts('all')">全部</button>
+                        <button onclick="filterAlerts('active')">活跃</button>
+                        <button onclick="filterAlerts('acknowledged')">已确认</button>
+                        <button onclick="filterAlerts('resolved')">已解决</button>
+                    </div>
+                    <div id="alertList"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="rulesTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>告警规则</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <span id="ruleCount" style="color: #666; font-size: 14px;">0/10 条规则</span>
+                        <button class="btn btn-primary" onclick="showRuleModal()">+ 添加规则</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>设备</th>
+                                <th>条件类型</th>
+                                <th>优先级</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ruleTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="ruleModal">
+        <div class="modal-content" style="min-width: 600px;">
+            <h2 id="ruleModalTitle">添加规则</h2>
+            <div class="form-group">
+                <label>规则名称</label>
+                <input type="text" id="ruleName" placeholder="例如: 温度过高告警">
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" id="ruleDescription" placeholder="可选描述">
+            </div>
+            <div class="form-group">
+                <label>设备</label>
+                <select id="ruleDeviceSelect" onchange="onDeviceSelectChange()">
+                    <option value="">所有设备</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>条件类型</label>
+                <select id="ruleConditionType" onchange="updateConditionFields()">
+                    <option value="threshold">阈值 (threshold)</option>
+                    <option value="status">状态 (status)</option>
+                    <option value="change">变化 (change)</option>
+                    <option value="expression">表达式 (expression)</option>
+                </select>
+            </div>
+            <div class="form-group" id="thresholdFields">
+                <label>条件 (threshold)</label>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <select id="thresholdField" style="width: 100px;">
+                        <option value="temperature">温度</option>
+                        <option value="humidity">湿度</option>
+                        <option value="pressure">压力</option>
+                        <option value="battery">电量</option>
+                    </select>
+                    <select id="thresholdOp" style="width: 80px;">
+                        <option value=">">&gt;</option>
+                        <option value="<">&lt;</option>
+                        <option value=">=">&gt;=</option>
+                        <option value="<=">&lt;=</option>
+                        <option value="==">==</option>
+                    </select>
+                    <input type="number" id="thresholdValue" placeholder="值" style="width: 100px;">
+                </div>
+            </div>
+            <div class="form-group" id="statusFields" style="display:none;">
+                <label>状态条件 (status)</label>
+                <select id="statusValue">
+                    <option value="online">在线 (online)</option>
+                    <option value="offline">离线 (offline)</option>
+                </select>
+            </div>
+            <div class="form-group" id="expressionFields" style="display:none;">
+                <label>表达式 (expression)</label>
+                <input type="text" id="ruleExpression" placeholder="例如: temperature > 30 and humidity < 60">
+                <p style="color: #999; font-size: 12px; margin-top: 4px;">可用字段: temperature, humidity, pressure, battery, status</p>
+            </div>
+            <div class="form-group">
+                <label>优先级</label>
+                <select id="rulePriority">
+                    <option value="3">低 (low)</option>
+                    <option value="2" selected>中 (medium)</option>
+                    <option value="1">高 (high)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>告警动作</label>
+                <select id="ruleActionType">
+                    <option value="websocket">WebSocket</option>
+                    <option value="webhook">Webhook</option>
+                    <option value="mqtt">MQTT</option>
+                    <option value="dashboard">仪表板</option>
+                </select>
+                <input type="text" id="ruleActionConfig" placeholder="配置 (如 webhook URL)" style="margin-top: 8px;">
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeRuleModal()">取消</button>
+                <button class="btn btn-primary" onclick="saveRule()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="alertDetailModal">
+        <div class="modal-content">
+            <h2>告警详情</h2>
+            <div class="info-row">
+                <div class="info-label">告警ID:</div>
+                <div class="info-value monospace" id="alertDetailId"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">规则名称:</div>
+                <div class="info-value" id="alertDetailRuleName"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">设备:</div>
+                <div class="info-value" id="alertDetailDevice"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">优先级:</div>
+                <div class="info-value" id="alertDetailPriority"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">状态:</div>
+                <div class="info-value" id="alertDetailStatus"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">触发值:</div>
+                <div class="info-value monospace" id="alertDetailTriggerValue"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">消息:</div>
+                <div class="info-value" id="alertDetailMessage"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">产生时间:</div>
+                <div class="info-value" id="alertDetailCreated"></div>
+            </div>
+            <div class="modal-actions" id="alertDetailActions">
+                <button class="btn btn-secondary" onclick="closeAlertDetailModal()">关闭</button>
             </div>
         </div>
     </div>
@@ -354,6 +551,10 @@
                 loadUsersForSelect();
             }
             
+            document.getElementById('tabAlerts').style.display = 'inline-block';
+            document.getElementById('tabRules').style.display = 'inline-block';
+            document.getElementById('btnAlertMgmt').style.display = 'inline-block';
+            
             loadDeviceTypes();
             loadDevices();
             connectWebSocket();
@@ -384,6 +585,15 @@
                 document.getElementById('tabUsers').classList.add('active');
                 document.getElementById('usersTab').classList.add('active');
                 loadUsers();
+            } else if (tabName === 'alerts') {
+                document.getElementById('tabAlerts').classList.add('active');
+                document.getElementById('alertsTab').classList.add('active');
+                loadAlertStats();
+                loadAlerts();
+            } else if (tabName === 'rules') {
+                document.getElementById('tabRules').classList.add('active');
+                document.getElementById('rulesTab').classList.add('active');
+                loadRules();
             } else {
                 document.querySelector('.tab').classList.add('active');
                 document.getElementById('devicesTab').classList.add('active');
@@ -750,9 +960,34 @@
                 if (msg.type === 'device_updated' || msg.type === 'device_registered' || msg.type === 'device_unregistered') {
                     loadDevices();
                     loadStats();
+                } else if (msg.type === 'alert') {
+                    showAlertNotification(msg.alert);
+                    if (document.getElementById('alertsTab').classList.contains('active')) {
+                        loadAlerts();
+                        loadAlertStats();
+                    }
                 }
             };
             ws.onclose = () => setTimeout(connectWebSocket, 3000);
+        }
+        
+        function showAlertNotification(alert) {
+            const priorityColors = { 1: '#ff4d4f', 2: '#faad14', 3: '#1890ff' };
+            const priorityNames = { 1: '高', 2: '中', 3: '低' };
+            const color = priorityColors[alert.priority] || '#1890ff';
+            
+            const notification = document.createElement('div');
+            notification.style.cssText = `position: fixed; top: 80px; right: 20px; background: white; padding: 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-left: 4px solid ${color}; z-index: 2000; max-width: 350px;`;
+            notification.innerHTML = `
+                <div style="font-weight: 500; margin-bottom: 4px;">${alert.rule_name || '告警'}</div>
+                <div style="color: #666; font-size: 13px;">${alert.message || alert.trigger_value || ''}</div>
+                <div style="color: #999; font-size: 12px; margin-top: 8px;">
+                    <span class="priority-badge ${alert.priority === 1 ? 'high' : alert.priority === 2 ? 'medium' : 'low'}">${priorityNames[alert.priority] || '低'}</span>
+                    ${alert.device_name ? ' - ' + alert.device_name : ''}
+                </div>
+            `;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 5000);
         }
 
         function showRegisterModal() {
@@ -980,6 +1215,400 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
 
         function closeSecretModal() {
             document.getElementById('secretModal').classList.remove('active');
+        }
+
+        let currentAlertFilter = 'all';
+        let allAlerts = [];
+
+        function loadAlertStats() {
+            auth.authFetch(`${API_BASE}/alerts/stats`)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('activeAlerts').textContent = data.active || 0;
+                    document.getElementById('acknowledgedAlerts').textContent = data.acknowledged || 0;
+                    document.getElementById('todayAlerts').textContent = data.today || 0;
+                });
+        }
+
+        function loadAlerts() {
+            const status = currentAlertFilter === 'all' ? '' : currentAlertFilter;
+            auth.authFetch(`${API_BASE}/alerts?status=${status}&limit=50`)
+                .then(r => r.json())
+                .then(data => {
+                    allAlerts = data.alerts || [];
+                    renderAlertList(allAlerts);
+                });
+        }
+
+        function filterAlerts(filter) {
+            currentAlertFilter = filter;
+            document.querySelectorAll('.alert-filter button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            loadAlerts();
+        }
+
+        function renderAlertList(alerts) {
+            const container = document.getElementById('alertList');
+            if (alerts.length === 0) {
+                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">暂无告警记录</div>';
+                return;
+            }
+
+            const priorityNames = { 1: '高', 2: '中', 3: '低' };
+            const statusNames = { active: '活跃', acknowledged: '已确认', resolved: '已解决' };
+
+            container.innerHTML = alerts.map(a => `
+                <div class="alert-item" onclick="showAlertDetail('${a.id}')" style="cursor: pointer;">
+                    <div class="alert-header">
+                        <span class="alert-title">${a.rule_name || '未知规则'}</span>
+                        <span class="priority-badge ${a.priority === 1 ? 'high' : a.priority === 2 ? 'medium' : 'low'}">${priorityNames[a.priority] || '低'}</span>
+                    </div>
+                    <div class="alert-meta">
+                        <span>${a.device_name || a.device_id || '未知设备'}</span> - 
+                        <span>${statusNames[a.status] || a.status}</span> - 
+                        <span>${new Date(a.created_at).toLocaleString()}</span>
+                    </div>
+                    <div style="margin-top: 8px; font-size: 13px; color: #666;">${a.message || a.trigger_value || ''}</div>
+                </div>
+            `).join('');
+        }
+
+        function showAlertDetail(id) {
+            const alert = allAlerts.find(a => a.id === id);
+            if (!alert) return;
+
+            const priorityNames = { 1: '高', 2: '中', 3: '低' };
+            const statusNames = { active: '活跃', acknowledged: '已确认', resolved: '已解决' };
+
+            document.getElementById('alertDetailId').textContent = alert.id;
+            document.getElementById('alertDetailRuleName').textContent = alert.rule_name || '-';
+            document.getElementById('alertDetailDevice').textContent = alert.device_name || alert.device_id || '-';
+            document.getElementById('alertDetailPriority').innerHTML = `<span class="priority-badge ${alert.priority === 1 ? 'high' : alert.priority === 2 ? 'medium' : 'low'}">${priorityNames[alert.priority] || '低'}</span>`;
+            document.getElementById('alertDetailStatus').textContent = statusNames[alert.status] || alert.status;
+            document.getElementById('alertDetailTriggerValue').textContent = alert.trigger_value || '-';
+            document.getElementById('alertDetailMessage').textContent = alert.message || '-';
+            document.getElementById('alertDetailCreated').textContent = new Date(alert.created_at).toLocaleString();
+
+            const actionsDiv = document.getElementById('alertDetailActions');
+            if (alert.status === 'active') {
+                actionsDiv.innerHTML = `
+                    <button class="btn btn-secondary" onclick="closeAlertDetailModal()">关闭</button>
+                    <button class="btn btn-primary" onclick="acknowledgeAlert('${alert.id}')">确认</button>
+                    <button class="btn" onclick="resolveAlert('${alert.id}')">标记已解决</button>
+                `;
+            } else if (alert.status === 'acknowledged') {
+                actionsDiv.innerHTML = `
+                    <button class="btn btn-secondary" onclick="closeAlertDetailModal()">关闭</button>
+                    <button class="btn" onclick="resolveAlert('${alert.id}')">标记已解决</button>
+                `;
+            } else {
+                actionsDiv.innerHTML = '<button class="btn btn-secondary" onclick="closeAlertDetailModal()">关闭</button>';
+            }
+
+            document.getElementById('alertDetailModal').classList.add('active');
+        }
+
+        function closeAlertDetailModal() {
+            document.getElementById('alertDetailModal').classList.remove('active');
+        }
+
+        function acknowledgeAlert(id) {
+            auth.authFetch(`${API_BASE}/alerts/${id}/acknowledge`, { method: 'PUT' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        closeAlertDetailModal();
+                        loadAlerts();
+                        loadAlertStats();
+                    }
+                });
+        }
+
+        function resolveAlert(id) {
+            auth.authFetch(`${API_BASE}/alerts/${id}/resolve`, { method: 'PUT' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        closeAlertDetailModal();
+                        loadAlerts();
+                        loadAlertStats();
+                    }
+                });
+        }
+
+        let editingRuleId = null;
+
+        function loadRules() {
+            auth.authFetch(`${API_BASE}/alert-rules`)
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('ruleCount').textContent = `${data.total || 0}/${data.max || 10} 条规则`;
+                    renderRuleTable(data.rules || []);
+                });
+        }
+
+        function renderRuleTable(rules) {
+            const tbody = document.getElementById('ruleTable');
+            if (rules.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无规则</td></tr>';
+                return;
+            }
+
+            const priorityNames = { 1: '高', 2: '中', 3: '低' };
+            const conditionNames = { threshold: '阈值', status: '状态', change: '变化', expression: '表达式' };
+
+            tbody.innerHTML = rules.map(r => `
+                <tr>
+                    <td>${r.name}</td>
+                    <td>${r.device_id ? r.device_id.substring(0, 8) + '...' : r.device_type || '所有设备'}</td>
+                    <td>${conditionNames[r.condition_type] || r.condition_type}</td>
+                    <td><span class="priority-badge ${r.priority === 1 ? 'high' : r.priority === 2 ? 'medium' : 'low'}">${priorityNames[r.priority] || '中'}</span></td>
+                    <td>${r.enabled ? '<span class="status-badge active">启用</span>' : '<span class="status-badge disabled">禁用</span>'}</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="editRule('${r.id}')">编辑</button>
+                        ${r.enabled ? 
+                            `<button class="btn btn-sm" onclick="toggleRule('${r.id}', false)">禁用</button>` :
+                            `<button class="btn btn-sm btn-primary" onclick="toggleRule('${r.id}', true)">启用</button>`
+                        }
+                        <button class="btn btn-sm btn-danger" onclick="deleteRule('${r.id}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function showRuleModal(ruleId) {
+            editingRuleId = ruleId || null;
+            document.getElementById('ruleModalTitle').textContent = ruleId ? '编辑规则' : '添加规则';
+            
+            document.getElementById('ruleName').value = '';
+            document.getElementById('ruleDescription').value = '';
+            document.getElementById('ruleDeviceSelect').value = '';
+            document.getElementById('ruleConditionType').value = 'threshold';
+            document.getElementById('rulePriority').value = '2';
+            document.getElementById('ruleActionType').value = 'websocket';
+            document.getElementById('ruleActionConfig').value = '';
+            
+            updateConditionFields();
+            
+            const loadDevicesPromise = loadDevicesForRuleSelect();
+            
+            if (ruleId) {
+                auth.authFetch(`${API_BASE}/alert-rules/${ruleId}`)
+                    .then(r => r.json())
+                    .then(r => {
+                        document.getElementById('ruleName').value = r.name || '';
+                        document.getElementById('ruleDescription').value = r.description || '';
+                        document.getElementById('ruleDeviceSelect').value = r.device_id || '';
+                        document.getElementById('ruleConditionType').value = r.condition_type || 'threshold';
+                        document.getElementById('rulePriority').value = r.priority || 2;
+                        
+                        try {
+                            const actions = JSON.parse(r.actions || '{}');
+                            document.getElementById('ruleActionType').value = actions.type || 'websocket';
+                            document.getElementById('ruleActionConfig').value = actions.config || '';
+                        } catch(e) {}
+                        
+                        let selectedDeviceId = r.device_id;
+                        
+                        if (r.condition_type === 'expression') {
+                            document.getElementById('ruleExpression').value = r.expression || '';
+                        } else if (r.condition_type === 'status') {
+                            try {
+                                const conditions = JSON.parse(r.conditions || '{}');
+                                document.getElementById('statusValue').value = conditions.status || 'online';
+                            } catch(e) {}
+                        } else {
+                            try {
+                                const conditions = JSON.parse(r.conditions || '{}');
+                                document.getElementById('thresholdField').value = conditions.field || 'temperature';
+                                document.getElementById('thresholdOp').value = conditions.operator || '>';
+                                document.getElementById('thresholdValue').value = conditions.value || '';
+                            } catch(e) {}
+                        }
+                        
+                        updateConditionFields();
+                        
+                        if (selectedDeviceId) {
+                            loadDevicesPromise.then(() => {
+                                updateFieldSelectForDevice(selectedDeviceId, r.condition_type);
+                            });
+                        }
+                    });
+            }
+            
+            document.getElementById('ruleModal').classList.add('active');
+        }
+        
+        function onDeviceSelectChange() {
+            const deviceId = document.getElementById('ruleDeviceSelect').value;
+            const conditionType = document.getElementById('ruleConditionType').value;
+            
+            if (!deviceId) {
+                updateFieldSelectWithDefaults();
+                return;
+            }
+            
+            updateFieldSelectForDevice(deviceId, conditionType);
+        }
+        
+        function updateFieldSelectForDevice(deviceId, conditionType) {
+            const device = window.allDevicesForRule?.find(d => d.id === deviceId);
+            const currentValue = document.getElementById('thresholdField').value;
+            
+            if (!device) {
+                updateFieldSelectWithDefaults();
+                return;
+            }
+            
+            let fields = [];
+            try {
+                fields = Object.keys(JSON.parse(device.properties || '{}'));
+            } catch(e) {}
+            
+            if (fields.length === 0) {
+                fields = ['temperature', 'humidity', 'pressure', 'battery', 'status'];
+            }
+            
+            updateFieldSelect(fields);
+            
+            if (currentValue && fields.includes(currentValue)) {
+                document.getElementById('thresholdField').value = currentValue;
+            }
+            
+            if (conditionType === 'status') {
+                document.getElementById('statusValue').innerHTML = `
+                    <option value="online">在线 (online)</option>
+                    <option value="offline">离线 (offline)</option>
+                `;
+            }
+        }
+        
+        function updateFieldSelect(fields) {
+            const select = document.getElementById('thresholdField');
+            const currentValue = select.value;
+            select.innerHTML = fields.map(f => 
+                `<option value="${f}">${f}</option>`
+            ).join('');
+        }
+        
+        function updateFieldSelectWithDefaults() {
+            updateFieldSelect(['temperature', 'humidity', 'pressure', 'battery', 'status']);
+        }
+
+        function closeRuleModal() {
+            document.getElementById('ruleModal').classList.remove('active');
+            editingRuleId = null;
+        }
+
+        function updateConditionFields() {
+            const type = document.getElementById('ruleConditionType').value;
+            document.getElementById('thresholdFields').style.display = type === 'threshold' ? 'block' : 'none';
+            document.getElementById('statusFields').style.display = type === 'status' ? 'block' : 'none';
+            document.getElementById('expressionFields').style.display = type === 'expression' ? 'block' : 'none';
+        }
+
+        function loadDevicesForRuleSelect() {
+            return auth.authFetch(`${API_BASE}/devices`)
+                .then(r => r.json())
+                .then(data => {
+                    const devices = data.devices || [];
+                    window.allDevicesForRule = devices;
+                    document.getElementById('ruleDeviceSelect').innerHTML = '<option value="">所有设备</option>' + 
+                        devices.map(d => `<option value="${d.id}">${d.name} (${d.type_name || 'unknown'})</option>`).join('');
+                    return devices;
+                });
+        }
+
+        function saveRule() {
+            const name = document.getElementById('ruleName').value.trim();
+            if (!name) {
+                alert('请输入规则名称');
+                return;
+            }
+
+            const conditionType = document.getElementById('ruleConditionType').value;
+            let conditions = {};
+            
+            if (conditionType === 'threshold') {
+                conditions = {
+                    field: document.getElementById('thresholdField').value,
+                    operator: document.getElementById('thresholdOp').value,
+                    value: parseFloat(document.getElementById('thresholdValue').value)
+                };
+            } else if (conditionType === 'status') {
+                conditions = {
+                    status: document.getElementById('statusValue').value
+                };
+            } else if (conditionType === 'expression') {
+                conditions = {};
+            }
+
+            const actions = {
+                type: document.getElementById('ruleActionType').value,
+                config: document.getElementById('ruleActionConfig').value
+            };
+
+            const body = {
+                name: name,
+                description: document.getElementById('ruleDescription').value,
+                device_id: document.getElementById('ruleDeviceSelect').value,
+                condition_type: conditionType,
+                conditions: conditions,
+                expression: conditionType === 'expression' ? document.getElementById('ruleExpression').value : '',
+                actions: actions,
+                priority: parseInt(document.getElementById('rulePriority').value),
+                enabled: true
+            };
+
+            const url = editingRuleId ? `${API_BASE}/alert-rules/${editingRuleId}` : `${API_BASE}/alert-rules`;
+            const method = editingRuleId ? 'PUT' : 'POST';
+
+            auth.authFetch(url, {
+                method: method,
+                body: JSON.stringify(body)
+            }).then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    closeRuleModal();
+                    loadRules();
+                }
+            });
+        }
+
+        function editRule(id) {
+            showRuleModal(id);
+        }
+
+        function toggleRule(id, enable) {
+            const action = enable ? 'enable' : 'disable';
+            auth.authFetch(`${API_BASE}/alert-rules/${id}/${action}`, { method: 'PUT' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadRules();
+                    }
+                });
+        }
+
+        function deleteRule(id) {
+            if (!confirm('确定删除此规则吗？')) return;
+            auth.authFetch(`${API_BASE}/alert-rules/${id}`, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadRules();
+                    }
+                });
         }
 
         init();

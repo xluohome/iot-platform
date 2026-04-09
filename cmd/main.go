@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"iot-platform/internal/alert"
 	"iot-platform/internal/api"
 	"iot-platform/internal/auth"
 	"iot-platform/internal/config"
@@ -58,7 +59,23 @@ func main() {
 		})
 	})
 
-	apiServer := api.NewServer(cfg, deviceMgr, mqttServer, store, wsHub)
+	alertStore := alert.NewAlertStore(store.DB())
+	alertEvaluator := alert.NewEvaluator()
+	alertExecutor := alert.NewExecutor(wsHub, func(topic string, payload []byte) error {
+		return mqttServer.Publish(topic, payload)
+	})
+	alertManager := alert.NewManager(alertStore, alertEvaluator, alertExecutor)
+	if err := alertManager.Initialize(); err != nil {
+		log.Fatalf("Failed to initialize alert manager: %v", err)
+	}
+
+	mqttServer.SetTelemetryCallback(func(deviceID string, data map[string]interface{}) {
+		alertManager.ProcessTelemetry(deviceID, data)
+	})
+
+	alertHandler := alert.NewHandler(alertManager)
+
+	apiServer := api.NewServer(cfg, deviceMgr, mqttServer, store, wsHub, alertHandler)
 
 	go func() {
 		log.Printf("Starting HTTP API server on port %s", cfg.Server.HTTPAddr)

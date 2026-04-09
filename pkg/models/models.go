@@ -135,3 +135,104 @@ type RefreshResponse struct {
 	ExpiresIn   int64  `json:"expires_in"`
 	TokenType   string `json:"token_type"`
 }
+
+type AlertPriority int
+
+const (
+	PriorityLow    AlertPriority = 1
+	PriorityMedium AlertPriority = 2
+	PriorityHigh   AlertPriority = 3
+)
+
+type AlertRule struct {
+	ID            string        `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	Name          string        `json:"name" gorm:"type:varchar(100);not null"`
+	Description   string        `json:"description" gorm:"type:text"`
+	UserID        uint          `json:"user_id" gorm:"index"`
+	DeviceID      string        `json:"device_id" gorm:"type:varchar(36);index"`
+	DeviceType    string        `json:"device_type" gorm:"type:varchar(50)"`
+	ConditionType string        `json:"condition_type" gorm:"type:varchar(20);not null"`
+	Conditions    string        `json:"conditions" gorm:"type:text;not null"`
+	Expression    string        `json:"expression" gorm:"type:text"`
+	Actions       string        `json:"actions" gorm:"type:text;not null"`
+	Priority      AlertPriority `json:"priority" gorm:"type:integer;default:2"`
+	Enabled       bool          `json:"enabled" gorm:"type:bool;default:true"`
+	CheckInterval int           `json:"check_interval" gorm:"type:integer;default:60"`
+	Cooldown      int           `json:"cooldown" gorm:"type:integer;default:300"`
+	LastTriggered *time.Time    `json:"last_triggered"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
+}
+
+type Alert struct {
+	ID             string        `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	RuleID         string        `json:"rule_id" gorm:"type:varchar(36);index"`
+	RuleName       string        `json:"rule_name"`
+	DeviceID       string        `json:"device_id" gorm:"type:varchar(36);index"`
+	DeviceName     string        `json:"device_name"`
+	UserID         uint          `json:"user_id" gorm:"index"`
+	Status         string        `json:"status" gorm:"type:varchar(20);default:'active'"`
+	Priority       AlertPriority `json:"priority"`
+	TriggerValue   string        `json:"trigger_value" gorm:"type:text"`
+	Message        string        `json:"message" gorm:"type:text"`
+	AcknowledgedAt *time.Time    `json:"acknowledged_at"`
+	AcknowledgedBy *uint         `json:"acknowledged_by"`
+	ResolvedAt     *time.Time    `json:"resolved_at"`
+	CreatedAt      time.Time     `json:"created_at"`
+}
+
+type AlertRuleRequest struct {
+	Name          string                 `json:"name" binding:"required"`
+	Description   string                 `json:"description"`
+	DeviceID      string                 `json:"device_id"`
+	DeviceType    string                 `json:"device_type"`
+	ConditionType string                 `json:"condition_type" binding:"required"`
+	Conditions    map[string]interface{} `json:"conditions" binding:"required"`
+	Expression    string                 `json:"expression"`
+	Actions       map[string]interface{} `json:"actions" binding:"required"`
+	Priority      AlertPriority          `json:"priority"`
+	Enabled       bool                   `json:"enabled"`
+	CheckInterval int                    `json:"check_interval"`
+	Cooldown      int                    `json:"cooldown"`
+}
+
+type AlertRuleResponse struct {
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Description   string        `json:"description"`
+	DeviceID      string        `json:"device_id"`
+	DeviceType    string        `json:"device_type"`
+	ConditionType string        `json:"condition_type"`
+	Conditions    string        `json:"conditions"`
+	Expression    string        `json:"expression"`
+	Actions       string        `json:"actions"`
+	Priority      AlertPriority `json:"priority"`
+	Enabled       bool          `json:"enabled"`
+	CheckInterval int           `json:"check_interval"`
+	Cooldown      int           `json:"cooldown"`
+	LastTriggered *time.Time    `json:"last_triggered"`
+	CreatedAt     time.Time     `json:"created_at"`
+}
+
+type AlertResponse struct {
+	ID             string        `json:"id"`
+	RuleID         string        `json:"rule_id"`
+	RuleName       string        `json:"rule_name"`
+	DeviceID       string        `json:"device_id"`
+	DeviceName     string        `json:"device_name"`
+	UserID         uint          `json:"user_id"`
+	Status         string        `json:"status"`
+	Priority       AlertPriority `json:"priority"`
+	TriggerValue   string        `json:"trigger_value"`
+	Message        string        `json:"message"`
+	AcknowledgedAt *time.Time    `json:"acknowledged_at"`
+	AcknowledgedBy *uint         `json:"acknowledged_by"`
+	ResolvedAt     *time.Time    `json:"resolved_at"`
+	CreatedAt      time.Time     `json:"created_at"`
+}
+
+type AlertStats struct {
+	ActiveCount       int64 `json:"active_count"`
+	AcknowledgedCount int64 `json:"acknowledged_count"`
+	TodayCount        int64 `json:"today_count"`
+}

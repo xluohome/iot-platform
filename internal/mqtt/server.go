@@ -21,6 +21,7 @@ type Server struct {
 	deviceMgr   *device.Manager
 	storage     *storage.Store
 	onMessage   func(*models.MQTTMessage)
+	onTelemetry func(deviceID string, data map[string]interface{})
 	conns       map[net.Conn]*mqttConn
 	deviceConns map[string]net.Conn
 	lock        sync.RWMutex
@@ -45,6 +46,10 @@ func NewServer(cfg *config.MQTTConfig, deviceMgr *device.Manager, store *storage
 
 func (s *Server) SetMessageCallback(cb func(*models.MQTTMessage)) {
 	s.onMessage = cb
+}
+
+func (s *Server) SetTelemetryCallback(cb func(deviceID string, data map[string]interface{})) {
+	s.onTelemetry = cb
 }
 
 func (s *Server) Start() error {
@@ -315,6 +320,10 @@ func (s *Server) handleTelemetry(deviceID string, payload []byte) {
 			Timestamp: time.Now(),
 		})
 	}
+
+	if s.onTelemetry != nil {
+		s.onTelemetry(deviceID, data)
+	}
 }
 
 func (s *Server) handleHeartbeat(deviceID string, payload []byte) {
@@ -391,6 +400,20 @@ func (s *Server) buildPublishPacket(topic string, payload []byte) []byte {
 	copy(packet[4+topicLen:], payload)
 
 	return packet
+}
+
+func (s *Server) Publish(topic string, payload []byte) error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	for conn, mc := range s.conns {
+		if mc.authenticated {
+			packet := s.buildPublishPacket(topic, payload)
+			conn.Write(packet)
+		}
+	}
+
+	return nil
 }
 
 func (s *Server) Stop() {
