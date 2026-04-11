@@ -273,6 +273,29 @@ func (m *Manager) GetStats() map[string]interface{} {
 	return stats
 }
 
+func (m *Manager) GetStatsByUser(userID uint) map[string]interface{} {
+	var devices []models.Device
+	if err := m.db.Where("user_id = ?", userID).Find(&devices).Error; err != nil {
+		return map[string]interface{}{"total": 0, "online": 0, "offline": 0}
+	}
+
+	stats := map[string]interface{}{
+		"total":   len(devices),
+		"online":  0,
+		"offline": 0,
+	}
+
+	for _, d := range devices {
+		if d.Status == models.StatusOnline {
+			stats["online"] = stats["online"].(int) + 1
+		} else {
+			stats["offline"] = stats["offline"].(int) + 1
+		}
+	}
+
+	return stats
+}
+
 func (m *Manager) DisableDevice(deviceID string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()

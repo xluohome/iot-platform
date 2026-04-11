@@ -654,7 +654,15 @@ func (s *Server) deleteDeviceType(c *gin.Context) {
 }
 
 func (s *Server) getStats(c *gin.Context) {
-	stats := s.deviceMgr.GetStats()
+	userID, _ := c.Get("user_id")
+	role, _ := c.Get("role")
+
+	var stats map[string]interface{}
+	if role == "admin" {
+		stats = s.deviceMgr.GetStats()
+	} else {
+		stats = s.deviceMgr.GetStatsByUser(userID.(uint))
+	}
 	stats["ws_clients"] = s.wsHub.ClientCount()
 
 	c.JSON(http.StatusOK, stats)
