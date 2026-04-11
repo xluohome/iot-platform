@@ -93,13 +93,18 @@ func (s *Server) handleConn(conn net.Conn) {
 		conn.Close()
 		s.lock.Lock()
 		delete(s.conns, conn)
+		var deviceID string
 		for id, c := range s.deviceConns {
 			if c == conn {
+				deviceID = id
 				delete(s.deviceConns, id)
 				break
 			}
 		}
 		s.lock.Unlock()
+		if deviceID != "" {
+			s.deviceMgr.UpdateStatus(deviceID, models.StatusOffline)
+		}
 	}()
 
 	buf := make([]byte, 4096)

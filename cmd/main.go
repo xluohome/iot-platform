@@ -33,10 +33,11 @@ func main() {
 		log.Printf("Warning: failed to create default admin: %v", err)
 	}
 
-	deviceMgr := device.NewManager(store.DB(), store)
+	deviceMgr := device.NewManager(store.DB(), store, cfg.Device.OfflineThreshold)
 	if err := deviceMgr.LoadFromDB(); err != nil {
 		log.Fatalf("Failed to load devices: %v", err)
 	}
+	deviceMgr.StartOfflineChecker()
 
 	wsHub := websocket.NewHub()
 	go wsHub.Run()
@@ -104,6 +105,7 @@ func main() {
 
 	log.Println("Shutting down...")
 
+	deviceMgr.StopOfflineChecker()
 	mqttServer.Stop()
 
 	log.Println("Goodbye!")

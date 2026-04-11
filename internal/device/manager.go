@@ -2,6 +2,7 @@ package device
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -13,11 +14,13 @@ import (
 )
 
 type Manager struct {
-	db       *gorm.DB
-	storage  *storage.Store
-	devices  map[string]*DeviceWrapper
-	lock     sync.RWMutex
-	onUpdate func(*models.Device)
+	db               *gorm.DB
+	storage          *storage.Store
+	devices          map[string]*DeviceWrapper
+	lock             sync.RWMutex
+	onUpdate         func(*models.Device)
+	offlineThreshold time.Duration
+	stopChecker      chan struct{}
 }
 
 type DeviceWrapper struct {
@@ -25,12 +28,18 @@ type DeviceWrapper struct {
 	heartbeatTimer *time.Timer
 }
 
-func NewManager(db *gorm.DB, store *storage.Store) *Manager {
-	return &Manager{
-		db:      db,
-		storage: store,
-		devices: make(map[string]*DeviceWrapper),
+func NewManager(db *gorm.DB, store *storage.Store, offlineThresholdSec int) *Manager {
+	m := &Manager{
+		db:               db,
+		storage:          store,
+		devices:          make(map[string]*DeviceWrapper),
+		offlineThreshold: time.Duration(offlineThresholdSec) * time.Second,
+		stopChecker:      make(chan struct{}),
 	}
+	if m.offlineThreshold == 0 {
+		m.offlineThreshold = 60 * time.Second
+	}
+	return m
 }
 
 func (m *Manager) SetUpdateCallback(cb func(*models.Device)) {
@@ -246,7 +255,12 @@ func (m *Manager) LoadFromDB() error {
 	defer m.lock.Unlock()
 
 	for i := range devices {
+		devices[i].Status = models.StatusOffline
 		m.devices[devices[i].ID] = &DeviceWrapper{Device: &devices[i]}
+	}
+
+	if err := m.db.Model(&models.Device{}).Where("status = ?", models.StatusOnline).Update("status", models.StatusOffline).Error; err != nil {
+		log.Printf("Warning: failed to reset device statuses: %v", err)
 	}
 
 	return nil
@@ -348,4 +362,43 @@ func (m *Manager) EnableDevice(deviceID string) error {
 	}
 
 	return nil
+}
+
+func (m *Manager) StartOfflineChecker() {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				m.checkOfflineDevices()
+			case <-m.stopChecker:
+				return
+			}
+		}
+	}()
+	log.Printf("Offline checker started (threshold: %v)", m.offlineThreshold)
+}
+
+func (m *Manager) StopOfflineChecker() {
+	close(m.stopChecker)
+}
+
+func (m *Manager) checkOfflineDevices() {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	now := time.Now()
+	for _, device := range m.devices {
+		if device.Status == models.StatusOnline && device.Disabled == false {
+			if now.Sub(device.LastSeen) > m.offlineThreshold {
+				m.db.Model(&models.Device{}).Where("id = ?", device.ID).Update("status", models.StatusOffline)
+				device.Status = models.StatusOffline
+				if m.onUpdate != nil {
+					go m.onUpdate(device.Device)
+				}
+			}
+		}
+	}
 }
