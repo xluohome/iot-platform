@@ -44,7 +44,8 @@
         .modal-content h2 { margin-bottom: 20px; color: #333; }
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; margin-bottom: 4px; color: #666; font-size: 14px; font-weight: 500; }
-        .form-group input, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .form-group input[type="text"], .form-group input[type="password"], .form-group input[type="number"], .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .form-group input[type="radio"], .form-group input[type="checkbox"] { width: auto; }
         .form-group input:focus, .form-group select:focus { outline: none; border-color: #1890ff; }
         .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
         .info-row { display: flex; border-bottom: 1px solid #eee; padding: 8px 0; }
@@ -492,12 +493,12 @@
                 <label>升级策略</label>
                 <div style="padding: 8px 0;">
                     <label style="display: flex; align-items: center; margin-bottom: 8px;">
-                        <input type="radio" name="upgradeStrategy" value="100" checked onchange="updateUpgradeStrategy()">
-                        <span style="margin-left: 8px;">全量升级 (100%) - 所有设备立即升级</span>
+                        <input type="radio" name="upgradeStrategy" value="100" checked onchange="updateUpgradeStrategy()" style="vertical-align: middle;">
+                        <span style="margin-left: 8px; vertical-align: middle;">全量升级 (100%) - 所有设备立即升级</span>
                     </label>
                     <label style="display: flex; align-items: center;">
-                        <input type="radio" name="upgradeStrategy" value="percentage" onchange="updateUpgradeStrategy()">
-                        <span style="margin-left: 8px;">灰度发布</span>
+                        <input type="radio" name="upgradeStrategy" value="percentage" onchange="updateUpgradeStrategy()" style="vertical-align: middle;">
+                        <span style="margin-left: 8px; vertical-align: middle;">灰度发布</span>
                     </label>
                 </div>
             </div>
@@ -576,16 +577,16 @@
                 <label>目标比例</label>
                 <div style="padding: 8px 0;">
                     <label style="display: flex; align-items: center; margin-bottom: 8px;">
-                        <input type="radio" name="expandStrategy" value="50" onchange="updateExpandStrategy()">
-                        <span style="margin-left: 8px;">50%</span>
+                        <input type="radio" name="expandStrategy" value="50" onchange="updateExpandStrategy()" style="vertical-align: middle;">
+                        <span style="margin-left: 8px; vertical-align: middle;">50%</span>
                     </label>
                     <label style="display: flex; align-items: center; margin-bottom: 8px;">
-                        <input type="radio" name="expandStrategy" value="100" onchange="updateExpandStrategy()">
-                        <span style="margin-left: 8px;">100% - 全量升级剩余设备</span>
+                        <input type="radio" name="expandStrategy" value="100" onchange="updateExpandStrategy()" style="vertical-align: middle;">
+                        <span style="margin-left: 8px; vertical-align: middle;">100% - 全量升级剩余设备</span>
                     </label>
                     <label style="display: flex; align-items: center;">
-                        <input type="radio" name="expandStrategy" value="custom" checked onchange="updateExpandStrategy()">
-                        <span style="margin-left: 8px;">自定义</span>
+                        <input type="radio" name="expandStrategy" value="custom" checked onchange="updateExpandStrategy()" style="vertical-align: middle;">
+                        <span style="margin-left: 8px; vertical-align: middle;">自定义</span>
                     </label>
                 </div>
             </div>
