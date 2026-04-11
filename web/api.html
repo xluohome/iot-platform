@@ -767,11 +767,12 @@
 
                 <div class="endpoint">
                     <span class="method post">POST</span><span class="path">/api/v1/devices/upgrade</span>
-                    <p class="desc">批量升级设备</p>
+                    <p class="desc">创建灰度升级任务（按百分比随机选择设备）</p>
                     <div class="code">{
   "firmware_id": 1,
-  "device_ids": ["device-id-1", "device-id-2"]
+  "percentage": 15
 }</div>
+                    <p class="desc" style="margin-top:8px;color:#666;">参数说明: percentage=100 表示全量升级，1-99 表示灰度发布百分比</p>
                 </div>
 
                 <div class="endpoint">
@@ -781,7 +782,25 @@
 
                 <div class="endpoint">
                     <span class="method get">GET</span><span class="path">/api/v1/upgrade-tasks/:id</span>
-                    <p class="desc">获取升级任务详情</p>
+                    <p class="desc">获取升级任务详情（含设备列表）</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/upgrade-tasks/:id/expand</span>
+                    <p class="desc">扩量升级（增加升级百分比）</p>
+                    <div class="code">{
+  "percentage": 50
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/upgrade-tasks/:id/cancel</span>
+                    <p class="desc">取消升级任务</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/upgrade-tasks/:id/retry</span>
+                    <p class="desc">重试失败的设备</p>
                 </div>
 
                 <h3 style="margin: 20px 0 10px;">MQTT 固件主题</h3>
@@ -804,7 +823,7 @@
                     <p class="desc">设备上报升级状态</p>
                     <div class="code">{
   "task_id": "xxx",
-  "status": "downloading|installing|success|failed",
+  "status": "pending|downloading|installing|success|failed",
   "progress": 50,
   "error": "error message if failed"
 }</div>

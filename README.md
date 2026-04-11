@@ -858,14 +858,15 @@ curl -X PUT http://localhost:8080/api/v1/devices/<device_id>/disable
 
 ## 版本信息
 
-- **当前版本**: 1.3.0
+- **当前版本**: 1.4.0
 - **Go 版本**: 1.21+
-- **最后更新**: 2026-04-09
+- **最后更新**: 2026-04-11
 - **更新内容**: 
-  - 告警规则引擎 (Alert Rule Engine)
-  - 实时告警通知 (WebSocket)
-  - URL Hash 路由支持 (页面刷新保持当前 Tab)
-  - Dashboard Tab 间导航优化
+  - 固件管理模块
+  - 固件升级（灰度发布）
+  - 支持百分比选择设备
+  - 升级任务管理（扩量/取消/重试）
+  - Dashboard Tab 调整（固件管理/固件升级）
 
 ---
 
@@ -1001,15 +1002,186 @@ Dashboard 支持 URL Hash 路由，页面刷新后保持当前 Tab。
 |-----|----------|
 | `dashboard.html#devices` | 设备列表 |
 | `dashboard.html#users` | 用户管理 (Admin) |
+| `dashboard.html#firmware` | 固件管理 |
+| `dashboard.html#upgrade` | 固件升级 |
 | `dashboard.html#alerts` | 告警中心 |
 | `dashboard.html#rules` | 告警规则 |
 
 ### 15.2 示例
 
 ```bash
-# 直接打开告警中心
-open http://localhost:8080/web/dashboard.html#alerts
+# 直接打开固件管理
+open http://localhost:8080/web/dashboard.html#firmware
 
-# 直接打开告警规则
-open http://localhost:8080/web/dashboard.html#rules
+# 直接打开固件升级
+open http://localhost:8080/web/dashboard.html#upgrade
 ```
+
+---
+
+## 16. 固件管理
+
+### 16.1 功能概述
+
+固件管理用于上传、查看、删除设备固件文件。
+
+### 16.2 固件管理 API
+
+```bash
+# 获取固件列表
+curl http://localhost:8080/api/v1/firmwares \
+  -H "Authorization: Bearer <token>"
+
+# 上传固件
+curl -X POST http://localhost:8080/api/v1/firmwares \
+  -H "Authorization: Bearer <token>" \
+  -F "name=sensor-v1.2" \
+  -F "version=1.2.0" \
+  -F "device_type=sensor" \
+  -F "description=传感器固件" \
+  -F "file=@firmware.bin"
+
+# 下载固件
+curl -O http://localhost:8080/api/v1/firmwares/<firmware_id>/download \
+  -H "Authorization: Bearer <token>"
+
+# 删除固件
+curl -X DELETE http://localhost:8080/api/v1/firmwares/<firmware_id> \
+  -H "Authorization: Bearer <token>"
+```
+
+### 16.3 固件限制
+
+- 最大文件大小: 16MB
+- 支持格式: .bin, .hex
+
+---
+
+## 17. 固件升级（灰度发布）
+
+### 17.1 功能概述
+
+固件升级支持灰度发布，可按百分比随机选择设备进行升级，支持分批次扩量。
+
+### 17.2 升级策略
+
+| 策略 | 说明 |
+|------|------|
+| 全量升级 | 100%，该类型下所有设备立即升级 |
+| 灰度发布 | 按百分比随机选择设备进行升级 |
+
+### 17.3 创建升级任务
+
+```bash
+# 创建升级任务 (灰度发布)
+curl -X POST http://localhost:8080/api/v1/devices/upgrade \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "firmware_id": 1,
+    "percentage": 15
+  }'
+```
+
+**参数说明:**
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| firmware_id | uint | 固件ID |
+| percentage | int | 升级百分比 (1-100)，100表示全量 |
+
+### 17.4 升级任务管理 API
+
+```bash
+# 获取升级任务列表
+curl http://localhost:8080/api/v1/upgrade-tasks \
+  -H "Authorization: Bearer <token>"
+
+# 获取任务详情
+curl http://localhost:8080/api/v1/upgrade-tasks/<task_id> \
+  -H "Authorization: Bearer <token>"
+
+# 扩量升级
+curl -X POST http://localhost:8080/api/v1/upgrade-tasks/<task_id>/expand \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"percentage": 50}'
+
+# 取消任务
+curl -X POST http://localhost:8080/api/v1/upgrade-tasks/<task_id>/cancel \
+  -H "Authorization: Bearer <token>"
+
+# 重试失败设备
+curl -X POST http://localhost:8080/api/v1/upgrade-tasks/<task_id>/retry \
+  -H "Authorization: Bearer <token>"
+```
+
+### 17.5 设备固件状态 API
+
+```bash
+# 获取设备当前固件版本
+curl http://localhost:8080/api/v1/devices/<device_id>/firmware \
+  -H "Authorization: Bearer <token>"
+
+# 获取设备升级状态
+curl http://localhost:8080/api/v1/devices/<device_id>/upgrade-status \
+  -H "Authorization: Bearer <token>"
+```
+
+### 17.6 MQTT 固件消息
+
+设备订阅以下主题接收固件升级信息：
+
+| 主题 | 方向 | 描述 |
+|------|------|------|
+| `devices/{id}/firmware/info` | 平台 → 设备 | 固件升级通知 |
+
+**固件升级消息格式:**
+```json
+{
+  "task_id": "设备升级任务ID",
+  "firmware_id": 1,
+  "version": "1.2.0",
+  "file_size": 1048576,
+  "checksum": "abc123...",
+  "download_url": "/firmware/1/download"
+}
+```
+
+设备上报升级状态到 `devices/{id}/firmware/status`:
+
+```json
+{
+  "task_id": "设备升级任务ID",
+  "status": "downloading",
+  "progress": 50,
+  "error": ""
+}
+```
+
+**状态值:**
+- `pending` - 等待升级
+- `downloading` - 下载中
+- `installing` - 安装中
+- `success` - 升级成功
+- `failed` - 升级失败
+
+### 17.7 扩量流程
+
+1. 创建15%灰度任务 → 选择15台设备升级
+2. 确认升级成功后 → 扩量到50% → 再增加35台
+3. 确认无问题 → 扩量到100% → 全部升级
+
+---
+
+## 18. 版本信息
+
+- **当前版本**: 1.4.0
+- **Go 版本**: 1.21+
+- **最后更新**: 2026-04-11
+- **更新内容**: 
+  - 固件管理模块
+  - 固件升级（灰度发布）
+  - 支持百分比选择设备
+  - 升级任务管理（扩量/取消/重试）
+  - Dashboard Tab 调整（固件管理/固件升级）
