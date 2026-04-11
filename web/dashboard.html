@@ -107,11 +107,7 @@
                 <span class="username" id="currentUsername"></span>
                 <span class="role" id="currentRole"></span>
             </div>
-            <button id="btnUserMgmt" class="btn" onclick="switchTab('users')" style="display:none;">用户管理</button>
-            <button id="btnFirmwareMgmt" class="btn" onclick="switchTab('firmware')" style="display:none;">固件管理</button>
-            <button id="btnFirmwareUpgrade" class="btn" onclick="switchTab('upgrade')" style="display:none;">固件升级</button>
-            <button id="btnAlertMgmt" class="btn" onclick="switchTab('alerts')" style="display:none;">告警中心</button>
-            <a href="api.html" target="_blank">API Documentation</a>
+            <a href="api.html" target="_blank">API文档</a>
             <button class="btn btn-logout" onclick="auth.logout()">Logout</button>
         </div>
     </div>
@@ -780,7 +776,6 @@
             
             if (currentUser.role === 'admin') {
                 document.getElementById('tabUsers').style.display = 'inline-block';
-                document.getElementById('btnUserMgmt').style.display = 'inline-block';
                 document.getElementById('deviceOwnerGroup').style.display = 'block';
                 loadUsersForSelect();
             }
@@ -789,9 +784,6 @@
             document.getElementById('tabRules').style.display = 'inline-block';
             document.getElementById('tabFirmware').style.display = 'inline-block';
             document.getElementById('tabUpgrade').style.display = 'inline-block';
-            document.getElementById('btnAlertMgmt').style.display = 'inline-block';
-            document.getElementById('btnFirmwareMgmt').style.display = 'inline-block';
-            document.getElementById('btnFirmwareUpgrade').style.display = 'inline-block';
             
             loadDeviceTypes();
             loadDevices();
