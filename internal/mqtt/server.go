@@ -16,16 +16,17 @@ import (
 )
 
 type Server struct {
-	config      *config.MQTTConfig
-	ln          net.Listener
-	deviceMgr   *device.Manager
-	storage     *storage.Store
-	onMessage   func(*models.MQTTMessage)
-	onTelemetry func(deviceID string, data map[string]interface{})
-	conns       map[net.Conn]*mqttConn
-	deviceConns map[string]net.Conn
-	lock        sync.RWMutex
-	running     bool
+	config           *config.MQTTConfig
+	ln               net.Listener
+	deviceMgr        *device.Manager
+	storage          *storage.Store
+	onMessage        func(*models.MQTTMessage)
+	onTelemetry      func(deviceID string, data map[string]interface{})
+	onFirmwareStatus func(deviceID string, payload []byte)
+	conns            map[net.Conn]*mqttConn
+	deviceConns      map[string]net.Conn
+	lock             sync.RWMutex
+	running          bool
 }
 
 type mqttConn struct {
@@ -50,6 +51,10 @@ func (s *Server) SetMessageCallback(cb func(*models.MQTTMessage)) {
 
 func (s *Server) SetTelemetryCallback(cb func(deviceID string, data map[string]interface{})) {
 	s.onTelemetry = cb
+}
+
+func (s *Server) SetFirmwareStatusCallback(cb func(deviceID string, payload []byte)) {
+	s.onFirmwareStatus = cb
 }
 
 func (s *Server) Start() error {
@@ -277,6 +282,11 @@ func (s *Server) handlePublish(conn net.Conn, data []byte) {
 	case strings.HasSuffix(topic, "/command/resp"):
 		deviceID = strings.Split(topic, "/")[1]
 		s.handleCommandResponse(deviceID, payload)
+	case strings.HasSuffix(topic, "/firmware/status"):
+		deviceID = strings.Split(topic, "/")[1]
+		if s.onFirmwareStatus != nil {
+			s.onFirmwareStatus(deviceID, payload)
+		}
 	}
 }
 

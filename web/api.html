@@ -54,6 +54,7 @@
             <a href="#websocket">WebSocket</a>
             <a href="#alert-rules">Alert Rules</a>
             <a href="#alerts">Alerts</a>
+            <a href="#firmware">Firmware</a>
         </div>
 
         <div class="card" id="auth">
@@ -667,6 +668,145 @@
                     <div class="code">{
   "type": "expression",
   "expression": "device.properties.temperature > 30 AND device.properties.humidity < 40"
+}</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card" id="firmware">
+            <div class="card-header"><h2>Firmware (固件升级)</h2></div>
+            <div class="card-body">
+                <p class="desc" style="margin-bottom: 16px;">
+                    固件升级功能支持设备固件 OTA 升级。平台管理固件文件，设备通过 HTTP 下载固件并完成升级。
+                </p>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/firmwares</span>
+                    <p class="desc">列出所有固件</p>
+                    <div class="code">{
+  "firmwares": [
+    {
+      "id": 1,
+      "name": "sensor-v1",
+      "version": "1.2.0",
+      "device_type": "sensor",
+      "file_size": 102400,
+      "checksum": "sha256:abc123...",
+      "description": "传感器固件v1.2.0",
+      "created_at": "2026-04-09T12:00:00Z"
+    }
+  ],
+  "total": 1
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/firmwares/:id</span>
+                    <p class="desc">获取固件详情</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/firmwares</span>
+                    <p class="desc">上传固件 (multipart/form-data)</p>
+                    <p class="desc">参数:</p>
+                    <div class="params">
+                        <div class="param"><span class="param-name">file</span><span class="param-type">file</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">name</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">version</span><span class="param-type">string</span><span class="param-required">required</span></div>
+                        <div class="param"><span class="param-name">device_type</span><span class="param-type">string</span></div>
+                        <div class="param"><span class="param-name">description</span><span class="param-type">string</span></div>
+                    </div>
+                    <div class="code">curl -X POST http://localhost:8080/api/v1/firmwares \
+  -H "Authorization: Bearer <token>" \
+  -F "file=@firmware.bin" \
+  -F "name=sensor-v1" \
+  -F "version=1.2.0" \
+  -F "device_type=sensor"</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method delete">DELETE</span><span class="path">/api/v1/firmwares/:id</span>
+                    <p class="desc">删除固件</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/firmwares/:id/download</span>
+                    <p class="desc">下载固件文件</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/devices/:id/firmware</span>
+                    <p class="desc">获取设备当前固件版本</p>
+                    <div class="code">{
+  "device_id": "xxx",
+  "version": "1.1.0",
+  "firmware": { "id": 1, "name": "sensor-v1", "version": "1.1.0" }
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/devices/:id/upgrade</span>
+                    <p class="desc">升级单个设备</p>
+                    <div class="code">{
+  "firmware_id": 1
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/devices/:id/upgrade-status</span>
+                    <p class="desc">获取设备升级状态</p>
+                    <div class="code">{
+  "task_id": "xxx",
+  "device_id": "xxx",
+  "status": "downloading",
+  "progress": 50,
+  "old_version": "1.1.0",
+  "new_version": "1.2.0"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method post">POST</span><span class="path">/api/v1/devices/upgrade</span>
+                    <p class="desc">批量升级设备</p>
+                    <div class="code">{
+  "firmware_id": 1,
+  "device_ids": ["device-id-1", "device-id-2"]
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/upgrade-tasks</span>
+                    <p class="desc">列出升级任务</p>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method get">GET</span><span class="path">/api/v1/upgrade-tasks/:id</span>
+                    <p class="desc">获取升级任务详情</p>
+                </div>
+
+                <h3 style="margin: 20px 0 10px;">MQTT 固件主题</h3>
+
+                <div class="endpoint">
+                    <span class="method">设备订阅</span><span class="path">devices/{id}/firmware/info</span>
+                    <p class="desc">平台发送固件信息给设备</p>
+                    <div class="code">{
+  "task_id": "xxx",
+  "firmware_id": 1,
+  "version": "1.2.0",
+  "file_size": 102400,
+  "checksum": "sha256:abc123...",
+  "download_url": "/firmware/1/download"
+}</div>
+                </div>
+
+                <div class="endpoint">
+                    <span class="method">设备发布</span><span class="path">devices/{id}/firmware/status</span>
+                    <p class="desc">设备上报升级状态</p>
+                    <div class="code">{
+  "task_id": "xxx",
+  "status": "downloading|installing|success|failed",
+  "progress": 50,
+  "error": "error message if failed"
 }</div>
                 </div>
             </div>

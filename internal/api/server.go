@@ -10,6 +10,7 @@ import (
 	"iot-platform/internal/auth"
 	"iot-platform/internal/config"
 	"iot-platform/internal/device"
+	"iot-platform/internal/firmware"
 	"iot-platform/internal/mqtt"
 	"iot-platform/internal/storage"
 	"iot-platform/internal/websocket"
@@ -19,19 +20,20 @@ import (
 )
 
 type Server struct {
-	router         *gin.Engine
-	config         *config.Config
-	deviceMgr      *device.Manager
-	mqttServer     *mqtt.Server
-	store          *storage.Store
-	wsHub          *websocket.Hub
-	jwtManager     *auth.JWTManager
-	authHandler    *auth.AuthHandler
-	authMiddleware *auth.AuthMiddleware
-	alertHandler   *alert.Handler
+	router          *gin.Engine
+	config          *config.Config
+	deviceMgr       *device.Manager
+	mqttServer      *mqtt.Server
+	store           *storage.Store
+	wsHub           *websocket.Hub
+	jwtManager      *auth.JWTManager
+	authHandler     *auth.AuthHandler
+	authMiddleware  *auth.AuthMiddleware
+	alertHandler    *alert.Handler
+	firmwareHandler *firmware.Handler
 }
 
-func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.Server, store *storage.Store, wsHub *websocket.Hub, alertHandler *alert.Handler) *Server {
+func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.Server, store *storage.Store, wsHub *websocket.Hub, alertHandler *alert.Handler, firmwareHandler *firmware.Handler) *Server {
 	r := gin.Default()
 
 	r.Use(func(c *gin.Context) {
@@ -50,16 +52,17 @@ func NewServer(cfg *config.Config, deviceMgr *device.Manager, mqttServer *mqtt.S
 	authMiddleware := auth.NewAuthMiddleware(jwtManager, store)
 
 	s := &Server{
-		router:         r,
-		config:         cfg,
-		deviceMgr:      deviceMgr,
-		mqttServer:     mqttServer,
-		store:          store,
-		wsHub:          wsHub,
-		jwtManager:     jwtManager,
-		authHandler:    authHandler,
-		authMiddleware: authMiddleware,
-		alertHandler:   alertHandler,
+		router:          r,
+		config:          cfg,
+		deviceMgr:       deviceMgr,
+		mqttServer:      mqttServer,
+		store:           store,
+		wsHub:           wsHub,
+		jwtManager:      jwtManager,
+		authHandler:     authHandler,
+		authMiddleware:  authMiddleware,
+		alertHandler:    alertHandler,
+		firmwareHandler: firmwareHandler,
 	}
 
 	s.setupRoutes()
@@ -140,6 +143,27 @@ func (s *Server) setupRoutes() {
 			alertRules.PUT("/:id/enable", s.alertHandler.EnableRule)
 			alertRules.PUT("/:id/disable", s.alertHandler.DisableRule)
 		}
+
+		firmwares := api.Group("/firmwares")
+		{
+			firmwares.GET("", s.firmwareHandler.ListFirmwares)
+			firmwares.GET("/:id", s.firmwareHandler.GetFirmware)
+			firmwares.POST("", s.firmwareHandler.UploadFirmware)
+			firmwares.DELETE("/:id", s.firmwareHandler.DeleteFirmware)
+		}
+
+		api.GET("/firmwares/:id/download", s.firmwareHandler.DownloadFirmware)
+
+		api.GET("/devices/:id/firmware", s.firmwareHandler.GetDeviceFirmware)
+		api.POST("/devices/:id/upgrade", s.firmwareHandler.UpgradeDevice)
+		api.GET("/devices/:id/upgrade-status", s.firmwareHandler.GetUpgradeStatus)
+		api.POST("/devices/upgrade", s.firmwareHandler.BatchUpgradeDevices)
+
+		api.GET("/upgrade-tasks", s.firmwareHandler.ListUpgradeTasks)
+		api.GET("/upgrade-tasks/:id", s.firmwareHandler.GetUpgradeTask)
+		api.POST("/upgrade-tasks/:id/expand", s.firmwareHandler.ExpandTask)
+		api.POST("/upgrade-tasks/:id/cancel", s.firmwareHandler.CancelTask)
+		api.POST("/upgrade-tasks/:id/retry", s.firmwareHandler.RetryFailed)
 	}
 
 	s.router.GET("/health", func(c *gin.Context) {

@@ -107,6 +107,8 @@
                 <span class="role" id="currentRole"></span>
             </div>
             <button id="btnUserMgmt" class="btn" onclick="switchTab('users')" style="display:none;">用户管理</button>
+            <button id="btnFirmwareMgmt" class="btn" onclick="switchTab('firmware')" style="display:none;">固件管理</button>
+            <button id="btnFirmwareUpgrade" class="btn" onclick="switchTab('upgrade')" style="display:none;">固件升级</button>
             <button id="btnAlertMgmt" class="btn" onclick="switchTab('alerts')" style="display:none;">告警中心</button>
             <a href="api.html" target="_blank">API Documentation</a>
             <button class="btn btn-logout" onclick="auth.logout()">Logout</button>
@@ -116,6 +118,8 @@
         <div class="tabs">
             <button class="tab active" onclick="switchTab('devices')">设备</button>
             <button id="tabUsers" class="tab" onclick="switchTab('users')" style="display:none;">用户</button>
+            <button id="tabFirmware" class="tab" onclick="switchTab('firmware')" style="display:none;">固件管理</button>
+            <button id="tabUpgrade" class="tab" onclick="switchTab('upgrade')" style="display:none;">固件升级</button>
             <button id="tabAlerts" class="tab" onclick="switchTab('alerts')" style="display:none;">告警中心</button>
             <button id="tabRules" class="tab" onclick="switchTab('rules')" style="display:none;">告警规则</button>
         </div>
@@ -162,6 +166,7 @@
                             <th>Type</th>
                             <th>Owner</th>
                             <th>Status</th>
+                            <th>Firmware</th>
                             <th>Last Seen</th>
                             <th>Actions</th>
                         </tr>
@@ -249,6 +254,61 @@
                             </tr>
                         </thead>
                         <tbody id="ruleTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="firmwareTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>固件管理</h2>
+                    <button class="btn btn-primary" onclick="showFirmwareModal()">+ 上传固件</button>
+                </div>
+                <div class="card-body">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>名称</th>
+                                <th>版本</th>
+                                <th>设备类型</th>
+                                <th>大小</th>
+                                <th>上传时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="firmwareTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="upgradeTab" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2>固件升级</h2>
+                    <button class="btn btn-primary" onclick="showCreateUpgradeTaskModal()">+ 创建升级</button>
+                </div>
+                <div class="card-body">
+                    <div class="alert-filter" id="upgradeStatusFilter">
+                        <button class="active" onclick="filterUpgradeTasks('all')">全部</button>
+                        <button onclick="filterUpgradeTasks('in_progress')">进行中</button>
+                        <button onclick="filterUpgradeTasks('completed')">已完成</button>
+                        <button onclick="filterUpgradeTasks('cancelled')">已取消</button>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>任务ID</th>
+                                <th>固件</th>
+                                <th>类型</th>
+                                <th>进度</th>
+                                <th>状态</th>
+                                <th>创建时间</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="upgradeTaskTable"></tbody>
                     </table>
                 </div>
             </div>
@@ -378,6 +438,175 @@
         </div>
     </div>
 
+    <div class="modal" id="firmwareModal">
+        <div class="modal-content">
+            <h2 id="firmwareModalTitle">上传固件</h2>
+            <div class="form-group">
+                <label>固件名称</label>
+                <input type="text" id="firmwareName" placeholder="例如: sensor-v1">
+            </div>
+            <div class="form-group">
+                <label>版本号</label>
+                <input type="text" id="firmwareVersion" placeholder="例如: 1.2.0">
+            </div>
+            <div class="form-group">
+                <label>设备类型</label>
+                <select id="firmwareDeviceType">
+                    <option value="">通用</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>描述</label>
+                <input type="text" id="firmwareDescription" placeholder="可选描述">
+            </div>
+            <div class="form-group">
+                <label>固件文件</label>
+                <input type="file" id="firmwareFile" accept=".bin,.hex">
+                <p style="color: #999; font-size: 12px; margin-top: 4px;">最大 16MB，支持 .bin 和 .hex 格式</p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeFirmwareModal()">取消</button>
+                <button class="btn btn-primary" onclick="uploadFirmware()">上传</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="createUpgradeModal">
+        <div class="modal-content">
+            <h2>创建升级任务</h2>
+            <div class="form-group">
+                <label>选择固件</label>
+                <select id="upgradeFirmwareSelect" onchange="onFirmwareSelectChange()">
+                    <option value="">请选择固件</option>
+                </select>
+            </div>
+            <div class="info-row" id="upgradeDeviceInfo" style="display:none;">
+                <div class="info-label">设备类型:</div>
+                <div class="info-value" id="upgradeTargetType"></div>
+            </div>
+            <div class="info-row" id="upgradeTotalDevicesInfo" style="display:none;">
+                <div class="info-label">设备总数:</div>
+                <div class="info-value"><span id="upgradeTotalDevices"></span> 台</div>
+            </div>
+            <div class="form-group" style="margin-top: 16px;">
+                <label>升级策略</label>
+                <div style="padding: 8px 0;">
+                    <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <input type="radio" name="upgradeStrategy" value="100" checked onchange="updateUpgradeStrategy()">
+                        <span style="margin-left: 8px;">全量升级 (100%) - 所有设备立即升级</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <input type="radio" name="upgradeStrategy" value="percentage" onchange="updateUpgradeStrategy()">
+                        <span style="margin-left: 8px;">灰度发布</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" id="upgradePercentageGroup" style="display:none;">
+                <label>升级比例</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="range" id="upgradePercentage" min="1" max="99" value="15" 
+                           style="flex: 1;" oninput="updateUpgradePercentage()">
+                    <span id="upgradePercentageValue" style="min-width: 50px;">15%</span>
+                </div>
+                <p style="color: #666; font-size: 12px; margin-top: 4px;">
+                    将从 <span id="upgradeSelectedCount">0</span> 台设备中随机选择进行升级
+                </p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeCreateUpgradeModal()">取消</button>
+                <button class="btn btn-primary" id="btnConfirmUpgrade" onclick="createUpgradeTask()">确认创建</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="upgradeTaskDetailModal">
+        <div class="modal-content" style="min-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <h2>任务详情 <span id="detailTaskId" style="font-size: 14px; color: #666;"></span></h2>
+            <div class="info-row">
+                <div class="info-label">固件:</div>
+                <div class="info-value" id="detailFirmwareName"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">设备类型:</div>
+                <div class="info-value" id="detailTargetType"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">升级进度:</div>
+                <div class="info-value" id="detailProgress"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">状态:</div>
+                <div class="info-value" id="detailStatus"></div>
+            </div>
+            <div class="info-row">
+                <div class="info-label">创建时间:</div>
+                <div class="info-value" id="detailCreatedAt"></div>
+            </div>
+            <div style="margin: 16px 0;">
+                <div style="background: #f5f5f5; height: 24px; border-radius: 4px; overflow: hidden;">
+                    <div id="detailProgressBar" style="background: #1890ff; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 13px;">
+                    <span>成功: <span id="detailSuccessCount" style="color: #52c41a;">0</span></span>
+                    <span>失败: <span id="detailFailCount" style="color: #ff4d4f;">0</span></span>
+                    <span>等待中: <span id="detailPendingCount" style="color: #faad14;">0</span></span>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>设备列表</label>
+                <div id="detailDeviceList" style="max-height: 200px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px;"></div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeUpgradeTaskDetailModal()">关闭</button>
+                <button class="btn" id="btnExpandTask" onclick="showExpandModal()">扩量</button>
+                <button class="btn btn-danger" id="btnCancelTask" onclick="cancelUpgradeTask()">取消任务</button>
+                <button class="btn btn-primary" id="btnRetryFailed" onclick="retryFailedDevices()">重试失败</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="expandUpgradeModal">
+        <div class="modal-content">
+            <h2>扩量升级</h2>
+            <div class="info-row">
+                <div class="info-label">当前:</div>
+                <div class="info-value" id="expandCurrentPercentage"></div>
+            </div>
+            <div class="form-group">
+                <label>目标比例</label>
+                <div style="padding: 8px 0;">
+                    <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <input type="radio" name="expandStrategy" value="50" onchange="updateExpandStrategy()">
+                        <span style="margin-left: 8px;">50%</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 8px;">
+                        <input type="radio" name="expandStrategy" value="100" onchange="updateExpandStrategy()">
+                        <span style="margin-left: 8px;">100% - 全量升级剩余设备</span>
+                    </label>
+                    <label style="display: flex; align-items: center;">
+                        <input type="radio" name="expandStrategy" value="custom" checked onchange="updateExpandStrategy()">
+                        <span style="margin-left: 8px;">自定义</span>
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" id="expandPercentageGroup">
+                <label>升级比例</label>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <input type="range" id="expandPercentage" min="1" max="100" value="30" 
+                           style="flex: 1;" oninput="updateExpandPercentage()">
+                    <span id="expandPercentageValue" style="min-width: 50px;">30%</span>
+                </div>
+                <p style="color: #666; font-size: 12px; margin-top: 4px;">
+                    确认扩量将选择 <span id="expandNewDevices">0</span> 台新设备进行升级
+                </p>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeExpandModal()">取消</button>
+                <button class="btn btn-primary" onclick="confirmExpandTask()">确认扩量</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="registerModal">
         <div class="modal-content">
             <h2>Register Device</h2>
@@ -471,6 +700,10 @@
                 <div class="info-value" id="detailLastSeen"></div>
             </div>
             <div class="info-row">
+                <div class="info-label">Firmware:</div>
+                <div class="info-value" id="detailFirmware"></div>
+            </div>
+            <div class="info-row">
                 <div class="info-label">Created:</div>
                 <div class="info-value" id="detailCreated"></div>
             </div>
@@ -553,7 +786,11 @@
             
             document.getElementById('tabAlerts').style.display = 'inline-block';
             document.getElementById('tabRules').style.display = 'inline-block';
+            document.getElementById('tabFirmware').style.display = 'inline-block';
+            document.getElementById('tabUpgrade').style.display = 'inline-block';
             document.getElementById('btnAlertMgmt').style.display = 'inline-block';
+            document.getElementById('btnFirmwareMgmt').style.display = 'inline-block';
+            document.getElementById('btnFirmwareUpgrade').style.display = 'inline-block';
             
             loadDeviceTypes();
             loadDevices();
@@ -566,7 +803,7 @@
         
         function handleHashChange() {
             const tabName = window.location.hash.slice(1) || 'devices';
-            const validTabs = ['devices', 'users', 'alerts', 'rules'];
+            const validTabs = ['devices', 'users', 'firmware', 'upgrade', 'alerts', 'rules'];
             if (validTabs.includes(tabName)) {
                 activateTab(tabName);
             }
@@ -589,6 +826,14 @@
                 document.getElementById('tabRules').classList.add('active');
                 document.getElementById('rulesTab').classList.add('active');
                 loadRules();
+            } else if (tabName === 'firmware') {
+                document.getElementById('tabFirmware').classList.add('active');
+                document.getElementById('firmwareTab').classList.add('active');
+                loadFirmwares();
+            } else if (tabName === 'upgrade') {
+                document.getElementById('tabUpgrade').classList.add('active');
+                document.getElementById('upgradeTab').classList.add('active');
+                loadUpgradeTasks();
             } else {
                 document.querySelector('.tab').classList.add('active');
                 document.getElementById('devicesTab').classList.add('active');
@@ -948,10 +1193,12 @@
                     <td>${d.type_name || '-'}</td>
                     <td>${d.owner_name || '-'}</td>
                     <td>${d.disabled ? '<span class="status" style="background:#ffccc7;color:#ff4d4f">disabled</span>' : '<span class="status ' + d.status + '">' + d.status + '</span>'}</td>
+                    <td>${d.firmware_version || '-'}</td>
                     <td>${d.last_seen ? new Date(d.last_seen).toLocaleString() : '-'}</td>
                     <td>
                         <button class="btn btn-primary" onclick="showDetail('${d.id}')" style="margin-right: 4px;">Details</button>
                         <button class="btn" onclick="showSecret('${d.id}')" style="margin-right: 4px;">Secret</button>
+                        <button class="btn" onclick="switchTab('upgrade')" style="margin-right: 4px;">升级</button>
                         <button class="btn btn-danger" onclick="deleteDevice('${d.id}')" ${d.status === 'online' || d.disabled ? 'disabled title="Offline only"' : ''}>Delete</button>
                     </td>
                 </tr>
@@ -1081,6 +1328,9 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                     document.getElementById('btnEnable').style.display = d.disabled ? 'inline-block' : 'none';
                     document.getElementById('detailLastSeen').textContent = d.last_seen ? new Date(d.last_seen).toLocaleString() : '-';
                     document.getElementById('detailCreated').textContent = d.created_at ? new Date(d.created_at).toLocaleString() : '-';
+                    document.getElementById('detailFirmware').innerHTML = d.firmware_version ? 
+                        `<span style="color:#52c41a">${d.firmware_version}</span> <button class="btn btn-sm" onclick="switchTab('upgrade')" style="margin-left:8px;">升级</button>` : 
+                        `<span style="color:#999">无</span> <button class="btn btn-sm" onclick="switchTab('upgrade')" style="margin-left:8px;">升级</button>`;
                     
                     if (currentUser.role === 'admin') {
                         document.getElementById('detailOwnerDisplay').style.display = 'none';
@@ -1648,6 +1898,447 @@ if (deviceTypes.find(t => t.name === d.type_name)) {
                         loadRules();
                     }
                 });
+        }
+
+        function loadFirmwares() {
+            auth.authFetch(`${API_BASE}/firmwares`)
+                .then(r => r.json())
+                .then(data => {
+                    renderFirmwareTable(data.firmwares || []);
+                });
+        }
+
+        function renderFirmwareTable(firmwares) {
+            const tbody = document.getElementById('firmwareTable');
+            if (firmwares.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无固件</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = firmwares.map(fw => `
+                <tr>
+                    <td>${fw.name}</td>
+                    <td>${fw.version}</td>
+                    <td>${fw.device_type || '通用'}</td>
+                    <td>${formatFileSize(fw.file_size)}</td>
+                    <td>${new Date(fw.created_at).toLocaleString()}</td>
+                    <td>
+                        <button class="btn btn-sm" onclick="downloadFirmware('${fw.id}')">下载</button>
+                        <button class="btn btn-sm btn-danger" onclick="deleteFirmware('${fw.id}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function showFirmwareModal() {
+            document.getElementById('firmwareName').value = '';
+            document.getElementById('firmwareVersion').value = '';
+            document.getElementById('firmwareDeviceType').value = '';
+            document.getElementById('firmwareDescription').value = '';
+            document.getElementById('firmwareFile').value = '';
+            loadDeviceTypesForFirmware();
+            document.getElementById('firmwareModal').classList.add('active');
+        }
+
+        function closeFirmwareModal() {
+            document.getElementById('firmwareModal').classList.remove('active');
+        }
+
+        function loadDeviceTypesForFirmware() {
+            auth.authFetch(`${API_BASE}/device-types`)
+                .then(r => r.json())
+                .then(data => {
+                    const types = data.device_types || [];
+                    document.getElementById('firmwareDeviceType').innerHTML = '<option value="">通用</option>' + 
+                        types.map(t => `<option value="${t.name}">${t.name}</option>`).join('');
+                });
+        }
+
+        function uploadFirmware() {
+            const name = document.getElementById('firmwareName').value.trim();
+            const version = document.getElementById('firmwareVersion').value.trim();
+            const deviceType = document.getElementById('firmwareDeviceType').value;
+            const description = document.getElementById('firmwareDescription').value.trim();
+            const fileInput = document.getElementById('firmwareFile');
+            const file = fileInput.files[0];
+
+            if (!name || !version) {
+                alert('请填写固件名称和版本号');
+                return;
+            }
+
+            if (!file) {
+                alert('请选择固件文件');
+                return;
+            }
+
+            if (file.size > 16 * 1024 * 1024) {
+                alert('固件文件大小不能超过 16MB');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', name);
+            formData.append('version', version);
+            formData.append('device_type', deviceType);
+            formData.append('description', description);
+            formData.append('file', file);
+
+            auth.authFetch(`${API_BASE}/firmwares`, {
+                method: 'POST',
+                body: formData
+            }).then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    closeFirmwareModal();
+                    loadFirmwares();
+                }
+            });
+        }
+
+        function downloadFirmware(id) {
+            window.open(`${API_BASE}/firmwares/${id}/download`, '_blank');
+        }
+
+        function deleteFirmware(id) {
+            if (!confirm('确定删除此固件吗？')) return;
+            auth.authFetch(`${API_BASE}/firmwares/${id}`, { method: 'DELETE' })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        loadFirmwares();
+                    }
+                });
+        }
+
+        let currentUpgradeTasksFilter = 'all';
+        let allUpgradeTasks = [];
+        let currentUpgradeTaskDetail = null;
+
+        function loadUpgradeTasks() {
+            auth.authFetch(`${API_BASE}/upgrade-tasks`)
+                .then(r => r.json())
+                .then(data => {
+                    allUpgradeTasks = data.tasks || [];
+                    renderUpgradeTaskTable();
+                });
+        }
+
+        function filterUpgradeTasks(filter) {
+            currentUpgradeTasksFilter = filter;
+            document.querySelectorAll('#upgradeStatusFilter button').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            renderUpgradeTaskTable();
+        }
+
+        function renderUpgradeTaskTable() {
+            let tasks = allUpgradeTasks;
+            if (currentUpgradeTasksFilter !== 'all') {
+                tasks = tasks.filter(t => t.status === currentUpgradeTasksFilter);
+            }
+
+            const tbody = document.getElementById('upgradeTaskTable');
+            if (tasks.length === 0) {
+                tbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无升级任务</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = tasks.map(t => {
+                const progress = t.selected_devices > 0 ? Math.round((t.success_count + t.fail_count) / t.selected_devices * 100) : 0;
+                const statusNames = { in_progress: '进行中', completed: '已完成', cancelled: '已取消' };
+                const statusClass = { in_progress: '', completed: 'online', cancelled: 'offline' };
+                return `
+                    <tr>
+                        <td style="font-family: monospace; font-size: 12px;">${t.id.substring(0, 8)}...</td>
+                        <td>${t.firmware_name || t.firmware_id} (${t.firmware_version || '-'})</td>
+                        <td>${t.target_type || '-'}</td>
+                        <td>${t.success_count + t.fail_count}/${t.selected_devices} (${progress}%)</td>
+                        <td><span class="status ${statusClass[t.status]}">${statusNames[t.status] || t.status}</span></td>
+                        <td>${new Date(t.created_at).toLocaleString()}</td>
+                        <td>
+                            <button class="btn btn-sm" onclick="showUpgradeTaskDetail('${t.id}')">详情</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function showCreateUpgradeTaskModal() {
+            document.getElementById('upgradeFirmwareSelect').innerHTML = '<option value="">加载中...</option>';
+            document.getElementById('upgradeDeviceInfo').style.display = 'none';
+            document.getElementById('upgradeTotalDevicesInfo').style.display = 'none';
+            document.getElementById('upgradePercentageGroup').style.display = 'none';
+            document.querySelector('input[name="upgradeStrategy"][value="100"]').checked = true;
+            document.getElementById('upgradePercentage').value = 15;
+            document.getElementById('upgradePercentageValue').textContent = '15%';
+
+            auth.authFetch(`${API_BASE}/firmwares`)
+                .then(r => r.json())
+                .then(data => {
+                    const firmwares = data.firmwares || [];
+                    if (firmwares.length === 0) {
+                        document.getElementById('upgradeFirmwareSelect').innerHTML = '<option value="">无可用固件</option>';
+                        return;
+                    }
+                    document.getElementById('upgradeFirmwareSelect').innerHTML = 
+                        '<option value="">请选择固件</option>' +
+                        firmwares.map(fw => 
+                            `<option value="${fw.id}" data-type="${fw.device_type || ''}">${fw.name} (${fw.version}) - ${fw.device_type || '通用'}</option>`
+                        ).join('');
+                });
+
+            document.getElementById('createUpgradeModal').classList.add('active');
+        }
+
+        function onFirmwareSelectChange() {
+            const select = document.getElementById('upgradeFirmwareSelect');
+            const selected = select.options[select.selectedIndex];
+            if (!selected.value) {
+                document.getElementById('upgradeDeviceInfo').style.display = 'none';
+                document.getElementById('upgradeTotalDevicesInfo').style.display = 'none';
+                document.getElementById('upgradePercentageGroup').style.display = 'none';
+                return;
+            }
+
+            const deviceType = selected.dataset.type;
+            document.getElementById('upgradeTargetType').textContent = deviceType || '通用';
+            document.getElementById('upgradeDeviceInfo').style.display = 'flex';
+
+            auth.authFetch(`${API_BASE}/device-types`)
+                .then(r => r.json())
+                .then(data => {
+                    const types = data.device_types || [];
+                    const targetType = types.find(t => t.name === deviceType);
+                    if (targetType) {
+                        document.getElementById('upgradeTotalDevices').textContent = targetType.device_count || 0;
+                        document.getElementById('upgradeTotalDevicesInfo').style.display = 'flex';
+                        updateUpgradePercentage();
+                    } else {
+                        document.getElementById('upgradeTotalDevices').textContent = '0';
+                        document.getElementById('upgradeTotalDevicesInfo').style.display = 'flex';
+                    }
+                });
+        }
+
+        function updateUpgradeStrategy() {
+            const strategy = document.querySelector('input[name="upgradeStrategy"]:checked').value;
+            const percentageGroup = document.getElementById('upgradePercentageGroup');
+            percentageGroup.style.display = strategy === 'percentage' ? 'block' : 'none';
+            updateUpgradePercentage();
+        }
+
+        function updateUpgradePercentage() {
+            const total = parseInt(document.getElementById('upgradeTotalDevices').textContent) || 0;
+            const percentage = parseInt(document.getElementById('upgradePercentage').value);
+            const selectedCount = Math.max(1, Math.floor(total * percentage / 100));
+            document.getElementById('upgradePercentageValue').textContent = percentage + '%';
+            document.getElementById('upgradeSelectedCount').textContent = selectedCount;
+        }
+
+        function closeCreateUpgradeModal() {
+            document.getElementById('createUpgradeModal').classList.remove('active');
+        }
+
+        function createUpgradeTask() {
+            const select = document.getElementById('upgradeFirmwareSelect');
+            const firmwareId = select.value;
+            if (!firmwareId) {
+                alert('请选择固件');
+                return;
+            }
+
+            const strategy = document.querySelector('input[name="upgradeStrategy"]:checked').value;
+            const percentage = strategy === '100' ? 100 : parseInt(document.getElementById('upgradePercentage').value);
+
+            auth.authFetch(`${API_BASE}/devices/upgrade`, {
+                method: 'POST',
+                body: JSON.stringify({ firmware_id: parseInt(firmwareId), percentage: percentage })
+            }).then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('创建失败: ' + data.error);
+                } else {
+                    alert('升级任务已创建');
+                    closeCreateUpgradeModal();
+                    loadUpgradeTasks();
+                }
+            }).catch(err => {
+                alert('创建失败: ' + (err.error || err.message));
+            });
+        }
+
+        function showUpgradeTaskDetail(taskId) {
+            auth.authFetch(`${API_BASE}/upgrade-tasks/${taskId}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+
+                    currentUpgradeTaskDetail = data.task;
+                    const task = data.task;
+                    const devices = data.devices || [];
+
+                    document.getElementById('detailTaskId').textContent = task.id.substring(0, 8) + '...';
+                    document.getElementById('detailFirmwareName').textContent = 
+                        `${task.firmware_name || task.firmware_id} (${task.firmware_version || '-'})`;
+                    document.getElementById('detailTargetType').textContent = task.target_type || '-';
+                    document.getElementById('detailProgress').textContent = 
+                        `${task.success_count + task.fail_count}/${task.selected_devices} (${task.percentage}%)`;
+                    
+                    const statusNames = { in_progress: '进行中', completed: '已完成', cancelled: '已取消' };
+                    document.getElementById('detailStatus').textContent = statusNames[task.status] || task.status;
+                    document.getElementById('detailCreatedAt').textContent = new Date(task.created_at).toLocaleString();
+
+                    const progressPercent = task.selected_devices > 0 ? 
+                        Math.round((task.success_count + task.fail_count) / task.selected_devices * 100) : 0;
+                    document.getElementById('detailProgressBar').style.width = progressPercent + '%';
+                    document.getElementById('detailSuccessCount').textContent = task.success_count;
+                    document.getElementById('detailFailCount').textContent = task.fail_count;
+                    document.getElementById('detailPendingCount').textContent = 
+                        task.selected_devices - task.success_count - task.fail_count;
+
+                    const statusIcons = { pending: '○', downloading: '↓', installing: '⚙', success: '✓', failed: '✗' };
+                    document.getElementById('detailDeviceList').innerHTML = devices.slice(0, 20).map(d => `
+                        <div style="padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;">
+                            <span style="font-family: monospace;">${d.device_id.substring(0, 8)}...</span>
+                            <span style="margin-left: 8px;">${d.old_version} → ${d.new_version}</span>
+                            <span style="margin-left: 8px; color: ${d.status === 'success' ? '#52c41a' : d.status === 'failed' ? '#ff4d4f' : '#faad14'};">
+                                ${statusIcons[d.status] || '○'} ${d.status}
+                            </span>
+                            ${d.error_msg ? `<div style="color: #ff4d4f; font-size: 12px;">${d.error_msg}</div>` : ''}
+                        </div>
+                    `).join('') + (devices.length > 20 ? `<div style="padding: 8px; color: #999;">还有 ${devices.length - 20} 台设备...</div>` : '');
+
+                    document.getElementById('btnExpandTask').style.display = task.status === 'in_progress' ? 'inline-block' : 'none';
+                    document.getElementById('btnCancelTask').style.display = task.status === 'in_progress' ? 'inline-block' : 'none';
+                    document.getElementById('btnRetryFailed').style.display = task.fail_count > 0 ? 'inline-block' : 'none';
+
+                    document.getElementById('upgradeTaskDetailModal').classList.add('active');
+                });
+        }
+
+        function closeUpgradeTaskDetailModal() {
+            document.getElementById('upgradeTaskDetailModal').classList.remove('active');
+            currentUpgradeTaskDetail = null;
+        }
+
+        function showExpandModal() {
+            if (!currentUpgradeTaskDetail) return;
+            document.getElementById('expandCurrentPercentage').textContent = 
+                `${currentUpgradeTaskDetail.percentage}% (${currentUpgradeTaskDetail.selected_devices}/${currentUpgradeTaskDetail.total_devices}台)`;
+            document.querySelector('input[name="expandStrategy"][value="custom"]').checked = true;
+            document.getElementById('expandPercentage').value = Math.min(100, currentUpgradeTaskDetail.percentage + 20);
+            updateExpandPercentage();
+            document.getElementById('expandUpgradeModal').classList.add('active');
+        }
+
+        function updateExpandStrategy() {
+            document.getElementById('expandPercentageGroup').style.display = 
+                document.querySelector('input[name="expandStrategy"]:checked').value === 'custom' ? 'block' : 'none';
+            updateExpandPercentage();
+        }
+
+        function updateExpandPercentage() {
+            const strategy = document.querySelector('input[name="expandStrategy"]:checked').value;
+            const currentPercent = currentUpgradeTaskDetail ? currentUpgradeTaskDetail.percentage : 0;
+            const totalDevices = currentUpgradeTaskDetail ? currentUpgradeTaskDetail.total_devices : 0;
+            const currentDevices = currentUpgradeTaskDetail ? currentUpgradeTaskDetail.selected_devices : 0;
+
+            let targetPercent, targetDevices;
+            if (strategy === 'custom') {
+                targetPercent = parseInt(document.getElementById('expandPercentage').value);
+            } else {
+                targetPercent = parseInt(strategy);
+            }
+
+            targetDevices = Math.floor(totalDevices * targetPercent / 100);
+            const newDevices = Math.max(0, targetDevices - currentDevices);
+
+            document.getElementById('expandPercentageValue').textContent = targetPercent + '%';
+            document.getElementById('expandNewDevices').textContent = newDevices;
+        }
+
+        function closeExpandModal() {
+            document.getElementById('expandUpgradeModal').classList.remove('active');
+        }
+
+        function confirmExpandTask() {
+            if (!currentUpgradeTaskDetail) return;
+
+            const strategy = document.querySelector('input[name="expandStrategy"]:checked').value;
+            let targetPercent;
+            if (strategy === 'custom') {
+                targetPercent = parseInt(document.getElementById('expandPercentage').value);
+            } else {
+                targetPercent = parseInt(strategy);
+            }
+
+            auth.authFetch(`${API_BASE}/upgrade-tasks/${currentUpgradeTaskDetail.id}/expand`, {
+                method: 'POST',
+                body: JSON.stringify({ percentage: targetPercent })
+            }).then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('扩量失败: ' + data.error);
+                } else {
+                    alert('扩量成功');
+                    closeExpandModal();
+                    closeUpgradeTaskDetailModal();
+                    loadUpgradeTasks();
+                }
+            }).catch(err => {
+                alert('扩量失败: ' + (err.error || err.message));
+            });
+        }
+
+        function cancelUpgradeTask() {
+            if (!currentUpgradeTaskDetail) return;
+            if (!confirm('确定取消此升级任务？')) return;
+
+            auth.authFetch(`${API_BASE}/upgrade-tasks/${currentUpgradeTaskDetail.id}/cancel`, {
+                method: 'POST'
+            }).then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('取消失败: ' + data.error);
+                } else {
+                    alert('任务已取消');
+                    closeUpgradeTaskDetailModal();
+                    loadUpgradeTasks();
+                }
+            });
+        }
+
+        function retryFailedDevices() {
+            if (!currentUpgradeTaskDetail) return;
+            if (!confirm('确定重试失败的设备？')) return;
+
+            auth.authFetch(`${API_BASE}/upgrade-tasks/${currentUpgradeTaskDetail.id}/retry`, {
+                method: 'POST'
+            }).then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    alert('重试失败: ' + data.error);
+                } else {
+                    alert('已重试失败设备');
+                    closeUpgradeTaskDetailModal();
+                    loadUpgradeTasks();
+                }
+            });
         }
 
         init();

@@ -11,6 +11,7 @@ import (
 	"iot-platform/internal/auth"
 	"iot-platform/internal/config"
 	"iot-platform/internal/device"
+	"iot-platform/internal/firmware"
 	"iot-platform/internal/mqtt"
 	"iot-platform/internal/storage"
 	"iot-platform/internal/websocket"
@@ -75,7 +76,15 @@ func main() {
 
 	alertHandler := alert.NewHandler(alertManager)
 
-	apiServer := api.NewServer(cfg, deviceMgr, mqttServer, store, wsHub, alertHandler)
+	firmwareStore := firmware.NewStore(store.DB())
+	firmwareManager := firmware.NewManager(firmwareStore, mqttServer)
+	firmwareHandler := firmware.NewHandler(firmwareManager, deviceMgr, []byte(cfg.Auth.JWTSecret))
+
+	mqttServer.SetFirmwareStatusCallback(func(deviceID string, payload []byte) {
+		firmwareManager.HandleDeviceStatus(deviceID, payload)
+	})
+
+	apiServer := api.NewServer(cfg, deviceMgr, mqttServer, store, wsHub, alertHandler, firmwareHandler)
 
 	go func() {
 		log.Printf("Starting HTTP API server on port %s", cfg.Server.HTTPAddr)

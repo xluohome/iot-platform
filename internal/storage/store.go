@@ -31,6 +31,10 @@ func New(cfg *config.DatabaseConfig) (*Store, error) {
 		&models.TelemetryData{},
 		&models.DeviceCommand{},
 		&models.DeviceType{},
+		&models.Firmware{},
+		&models.DeviceFirmware{},
+		&models.UpgradeTask{},
+		&models.UpgradeTaskDevice{},
 	); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -173,6 +177,14 @@ func (s *Store) GetDeviceTypeByName(name string) (*models.DeviceType, error) {
 	return &dt, nil
 }
 
+func (s *Store) GetDeviceFirmwareVersion(deviceID string) string {
+	var df models.DeviceFirmware
+	if err := s.db.Where("device_id = ?", deviceID).First(&df).Error; err != nil {
+		return ""
+	}
+	return df.Version
+}
+
 func (s *Store) ListDevicesWithTypes() ([]*models.DeviceResponse, error) {
 	var devices []*models.Device
 	if err := s.db.Find(&devices).Error; err != nil {
@@ -196,16 +208,17 @@ func (s *Store) ListDevicesWithTypes() ([]*models.DeviceResponse, error) {
 	result := make([]*models.DeviceResponse, 0, len(devices))
 	for _, d := range devices {
 		resp := &models.DeviceResponse{
-			ID:         d.ID,
-			Name:       d.Name,
-			TypeID:     d.TypeID,
-			UserID:     d.UserID,
-			Status:     string(d.Status),
-			Secret:     d.Secret,
-			Disabled:   d.Disabled,
-			Properties: d.Properties,
-			LastSeen:   d.LastSeen.Format(time.RFC3339),
-			CreatedAt:  d.CreatedAt.Format(time.RFC3339),
+			ID:              d.ID,
+			Name:            d.Name,
+			TypeID:          d.TypeID,
+			UserID:          d.UserID,
+			Status:          string(d.Status),
+			Secret:          d.Secret,
+			Disabled:        d.Disabled,
+			Properties:      d.Properties,
+			LastSeen:        d.LastSeen.Format(time.RFC3339),
+			CreatedAt:       d.CreatedAt.Format(time.RFC3339),
+			FirmwareVersion: s.GetDeviceFirmwareVersion(d.ID),
 		}
 		if name, ok := typeNames[d.TypeID]; ok {
 			resp.TypeName = name
@@ -404,18 +417,19 @@ func (s *Store) GetDeviceWithTypeAndUser(deviceID string, userID uint, role stri
 	}
 
 	return &models.DeviceResponse{
-		ID:         d.ID,
-		Name:       d.Name,
-		TypeID:     d.TypeID,
-		TypeName:   typeName,
-		UserID:     d.UserID,
-		OwnerName:  ownerName,
-		Status:     string(d.Status),
-		Secret:     d.Secret,
-		Disabled:   d.Disabled,
-		Properties: d.Properties,
-		LastSeen:   d.LastSeen.Format(time.RFC3339),
-		CreatedAt:  d.CreatedAt.Format(time.RFC3339),
+		ID:              d.ID,
+		Name:            d.Name,
+		TypeID:          d.TypeID,
+		TypeName:        typeName,
+		UserID:          d.UserID,
+		OwnerName:       ownerName,
+		Status:          string(d.Status),
+		Secret:          d.Secret,
+		Disabled:        d.Disabled,
+		Properties:      d.Properties,
+		LastSeen:        d.LastSeen.Format(time.RFC3339),
+		CreatedAt:       d.CreatedAt.Format(time.RFC3339),
+		FirmwareVersion: s.GetDeviceFirmwareVersion(d.ID),
 	}, nil
 }
 

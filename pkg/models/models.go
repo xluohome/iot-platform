@@ -100,18 +100,19 @@ func (d *Device) SetProperties(props Properties) error {
 }
 
 type DeviceResponse struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	TypeID     uint   `json:"type_id"`
-	TypeName   string `json:"type_name"`
-	UserID     uint   `json:"user_id"`
-	OwnerName  string `json:"owner_name"`
-	Status     string `json:"status"`
-	Secret     string `json:"secret"`
-	Disabled   bool   `json:"disabled"`
-	Properties string `json:"properties"`
-	LastSeen   string `json:"last_seen"`
-	CreatedAt  string `json:"created_at"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	TypeID          uint   `json:"type_id"`
+	TypeName        string `json:"type_name"`
+	UserID          uint   `json:"user_id"`
+	OwnerName       string `json:"owner_name"`
+	Status          string `json:"status"`
+	Secret          string `json:"secret"`
+	Disabled        bool   `json:"disabled"`
+	Properties      string `json:"properties"`
+	LastSeen        string `json:"last_seen"`
+	CreatedAt       string `json:"created_at"`
+	FirmwareVersion string `json:"firmware_version,omitempty"`
 }
 
 type UserResponse struct {
@@ -235,4 +236,82 @@ type AlertStats struct {
 	ActiveCount       int64 `json:"active_count"`
 	AcknowledgedCount int64 `json:"acknowledged_count"`
 	TodayCount        int64 `json:"today_count"`
+}
+
+type Firmware struct {
+	ID          uint      `json:"id" gorm:"primaryKey"`
+	Name        string    `json:"name" gorm:"type:varchar(100);not null"`
+	Version     string    `json:"version" gorm:"type:varchar(50);not null"`
+	DeviceType  string    `json:"device_type" gorm:"type:varchar(50)"`
+	FilePath    string    `json:"file_path" gorm:"type:varchar(255)"`
+	FileSize    int64     `json:"file_size"`
+	Checksum    string    `json:"checksum" gorm:"type:varchar(64)"`
+	Description string    `json:"description" gorm:"type:text"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type DeviceFirmware struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	DeviceID   string    `json:"device_id" gorm:"uniqueIndex;type:varchar(36)"`
+	Version    string    `json:"version" gorm:"type:varchar(50)"`
+	FirmwareID uint      `json:"firmware_id"`
+	UpgradedAt time.Time `json:"upgraded_at"`
+}
+
+type UpgradeTask struct {
+	ID              string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	FirmwareID      uint       `json:"firmware_id"`
+	FirmwareName    string     `json:"firmware_name" gorm:"type:varchar(100)"`
+	FirmwareVersion string     `json:"firmware_version" gorm:"type:varchar(50)"`
+	TargetType      string     `json:"target_type" gorm:"type:varchar(50)"`
+	TotalDevices    int        `json:"total_devices"`
+	SelectedDevices int        `json:"selected_devices"`
+	Percentage      int        `json:"percentage"`
+	SuccessCount    int        `json:"success_count"`
+	FailCount       int        `json:"fail_count"`
+	Status          string     `json:"status" gorm:"type:varchar(20);default:'pending'"`
+	CreatedAt       time.Time  `json:"created_at"`
+	CompletedAt     *time.Time `json:"completed_at"`
+	CancelledAt     *time.Time `json:"cancelled_at"`
+}
+
+type UpgradeTaskDevice struct {
+	ID          string     `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TaskID      string     `json:"task_id" gorm:"index;type:varchar(36)"`
+	DeviceID    string     `json:"device_id" gorm:"index;type:varchar(36)"`
+	DeviceName  string     `json:"device_name" gorm:"type:varchar(100)"`
+	OldVersion  string     `json:"old_version" gorm:"type:varchar(50)"`
+	NewVersion  string     `json:"new_version" gorm:"type:varchar(50)"`
+	Status      string     `json:"status" gorm:"type:varchar(20);default:'pending'"`
+	Progress    int        `json:"progress"`
+	ErrorMsg    string     `json:"error_msg" gorm:"type:text"`
+	RetryCount  int        `json:"retry_count" gorm:"default:0"`
+	StartedAt   *time.Time `json:"started_at"`
+	CompletedAt *time.Time `json:"completed_at"`
+}
+
+type FirmwareUploadRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Version     string `json:"version" binding:"required"`
+	DeviceType  string `json:"device_type"`
+	Description string `json:"description"`
+}
+
+type UpgradeRequest struct {
+	FirmwareID uint `json:"firmware_id" binding:"required"`
+	Percentage int  `json:"percentage"`
+}
+
+type ExpandRequest struct {
+	Percentage int `json:"percentage" binding:"required"`
+}
+
+type UpgradeStatusResponse struct {
+	TaskID     string `json:"task_id"`
+	DeviceID   string `json:"device_id"`
+	Status     string `json:"status"`
+	Progress   int    `json:"progress"`
+	ErrorMsg   string `json:"error_msg"`
+	OldVersion string `json:"old_version"`
+	NewVersion string `json:"new_version"`
 }
